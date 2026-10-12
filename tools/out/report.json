@@ -1,384 +1,190 @@
 {
- "directors": {
-  "Christopher Nolan": [
-   [
-    "Q25191",
-    18
-   ]
-  ],
-  "Denis Villeneuve": [
-   [
-    "Q548823",
-    22
-   ]
-  ],
-  "Quentin Tarantino": [
-   [
-    "Q3772",
-    23
-   ]
-  ],
-  "Martin Scorsese": [
-   [
-    "Q41148",
-    62
-   ]
-  ],
-  "Steven Spielberg": [
-   [
-    "Q8877",
-    54
-   ]
-  ],
-  "Hayao Miyazaki": [
-   [
-    "Q55400",
-    34
-   ]
-  ],
-  "Guillermo del Toro": [
-   [
-    "Q219124",
-    20
-   ]
-  ],
-  "Alfonso Cuarón": [
-   [
-    "Q28028",
-    14
-   ]
-  ],
-  "Alejandro González Iñárritu": [
-   [
-    "Q55215",
-    15
-   ]
-  ],
-  "Pedro Almodóvar": [
-   [
-    "Q55171",
-    30
-   ]
-  ],
-  "Wes Anderson": [
-   [
-    "Q223687",
-    22
-   ]
-  ],
-  "David Fincher": [
-   [
-    "Q184903",
-    24
-   ]
-  ],
-  "Ridley Scott": [
-   [
-    "Q56005",
-    43
-   ]
-  ],
-  "Stanley Kubrick": [
-   [
-    "Q2001",
-    17
-   ]
-  ],
-  "Tim Burton": [
-   [
-    "Q56008",
-    42
-   ]
-  ],
-  "Greta Gerwig": [
-   [
-    "Q271967",
-    6
-   ]
-  ],
-  "Bong Joon-ho": [
-   [
-    "Q495980",
-    13
-   ]
-  ],
-  "Sofia Coppola": [
-   [
-    "Q193628",
-    12
-   ]
-  ],
-  "Francis Ford Coppola": [
-   [
-    "Q56094",
-    35
-   ]
-  ],
-  "Alfred Hitchcock": [
-   [
-    "Q7374",
-    73
-   ]
-  ],
-  "James Cameron": [
-   [
-    "Q42574",
-    22
-   ]
-  ],
-  "Peter Jackson": [
-   [
-    "Q4465",
-    26
-   ]
-  ],
-  "Alejandro Amenábar": [
-   [
-    "Q274070",
-    12
-   ]
-  ],
-  "Juan Antonio Bayona": [],
-  "Clint Eastwood": [
-   [
-    "Q43203",
-    42
-   ]
-  ],
-  "Jordan Peele": [
-   [
-    "Q3371986",
-    3
-   ]
-  ],
-  "Yorgos Lanthimos": [
-   [
-    "Q975410",
-    14
-   ]
-  ],
-  "Paul Thomas Anderson": [
-   [
-    "Q25132",
-    17
-   ]
-  ]
- },
- "studios": {
-  "Studio Ghibli": [
-   [
-    "Q182950",
-    58
-   ]
-  ],
-  "A24": [
-   [
-    "Q16248298",
-    214
-   ]
-  ],
-  "Pixar": [
-   [
-    "Q127552",
-    106
-   ]
-  ],
-  "Walt Disney Animation Studios": [
-   [
-    "Q1047410",
-    113
-   ]
-  ],
-  "Marvel Studios": [
-   [
-    "Q367466",
-    81
-   ]
-  ],
-  "Lucasfilm": [
-   [
-    "Q242446",
-    64
-   ]
-  ],
-  "DreamWorks Animation": [
-   [
-    "Q500088",
-    116
-   ]
-  ],
-  "Blumhouse Productions": [
-   [
-    "Q16984664",
-    107
-   ]
-  ],
+ "labels": {
   "Laika": [
    [
-    "Q54805138",
-    103
+    "Q225754",
+    "Wikimedia disambiguation page"
+   ],
+   [
+    "Q39167",
+    "dog type"
+   ],
+   [
+    "Q53662",
+    "Soviet space dog (c. 1954–1957)"
    ],
    [
     "Q1314323",
-    9
+    "American stop-motion animation studio"
+   ],
+   [
+    "Q126694864",
+    "2022 early access video game"
+   ],
+   [
+    "Q133528534",
+    "2007 novel by Nick Abadzis"
+   ],
+   [
+    "Q136821745",
+    "Ugandan musician"
+   ],
+   [
+    "Q48847363",
+    "Soviet brand of cigarettes"
+   ],
+   [
+    "Q54805138",
+    "Belgian theatre company subsidised by the Government of Flanders"
+   ],
+   [
+    "Q116813674",
+    "female given name"
+   ],
+   [
+    "Q1763502",
+    "German record label"
+   ],
+   [
+    "Q1800696",
+    "band that plays alternative rock"
+   ],
+   [
+    "Q3826171",
+    "island, part of Vanuatu"
+   ],
+   [
+    "Q6473822",
+    "free software; open source Electronic Health Record (EHR) testing framework"
+   ],
+   [
+    "Q6473824",
+    "graphic novel"
+   ],
+   [
+    "Q17194825",
+    "1991 studio album by Åge Aleksandersen"
+   ],
+   [
+    "Q18203110",
+    "song by Mecano"
+   ],
+   [
+    "Q25511980",
+    "single"
    ]
   ],
-  "Aardman Animations": [
+  "J. A. Bayona": [
    [
-    "Q301092",
-    41
+    "Q932019",
+    "Spanish film director (born 1975)"
    ]
   ],
-  "Neon": [
+  "Halloween film": [
    [
-    "Q30603559",
-    80
+    "Q116918819",
+    "film theme"
    ]
   ],
-  "Illumination": [
+  "Christmas film": [
    [
-    "Q1189512",
-    19
+    "Q28026639",
+    "film genre associated with Christmas"
    ]
   ],
-  "Legendary Pictures": [
+  "superhero film": [
    [
-    "Q621364",
-    81
+    "Q1535153",
+    "film genre"
    ]
   ],
-  "Searchlight Pictures": [
+  "anime film": [
    [
-    "Q953040",
-    258
+    "Q20650540",
+    "animated film from Japan or in Japanese anime style"
    ]
   ],
-  "Toho": [
+  "J. A. Bayona films": [
    [
-    "Q875920",
-    955
+    "Q932019",
+    "9",
+    "The Impossible"
    ]
   ],
-  "Sony Pictures Animation": [
+  "Laika films": [
    [
-    "Q1416835",
-    43
-   ]
-  ],
-  "Amblin Entertainment": [
+    "Q54805138",
+    "103",
+    null
+   ],
    [
-    "Q457893",
-    124
-   ]
-  ]
- },
- "qids": {
-  "Q200092": [
-   [
-    "cine de terror",
-    "horror film"
-   ]
-  ],
-  "Q1257444": [
-   [
-    "adaptación cinematográfica",
-    "film adaptation"
-   ]
-  ],
-  "Q102427": [
-   [
-    "Óscar a la mejor película",
-    "Academy Award for Best Picture"
-   ]
-  ],
-  "Q11424": [
-   [
-    "película",
-    "film"
-   ]
-  ],
-  "Q202866": [
-   [
-    "película de animación",
-    "animated film"
-   ]
-  ],
-  "Q29168811": [
-   [
-    "película de animación",
-    "animated feature film"
-   ]
-  ],
-  "Q506240": [
-   [
-    "telefilme",
-    "television film"
-   ]
-  ],
-  "Q24869": [
-   [
-    "largometraje",
-    "feature film"
-   ]
-  ],
-  "Q2526255": [
-   [
-    "director de cine",
-    "film director"
+    "Q1314323",
+    "9",
+    "Wildwood"
    ]
   ]
  },
  "collections": {
   "ghibli": {
-   "qid": "Q182950",
-   "rows": 26,
-   "items": 9,
-   "seconds": 0.4,
+   "rows": 165,
+   "items": 57,
+   "seconds": 0.2,
    "sample": [
+    [
+     "Howl no Ugoku Shiro",
+     "Howl's Moving Castle"
+    ],
+    [
+     "Pandane no tamago hime",
+     "Mr. Dough and the Egg Princess"
+    ],
     [
      "Mi vecino Totoro",
      "My Neighbor Totoro"
     ],
     [
-     "Puedo escuchar el mar",
-     "Ocean Waves"
+     "Haru en el reino de los gatos",
+     "The Cat Returns"
     ],
     [
-     null,
-     "Kinyou roadshow opening"
+     "El viaje de Chihiro",
+     "Spirited Away"
     ],
     [
-     null,
-     "Yasuo Ōtsuka’s Joy in Motion"
+     "Gake no ue no Ponyo",
+     "Ponyo"
     ],
     [
-     "The Red Turtle",
-     "The Red Turtle"
+     "La colina de las amapolas",
+     "From Up on Poppy Hill"
     ],
     [
-     "Earwig y la bruja",
-     "Earwig and the Witch"
+     "Majo no Takkyūbin",
+     "Kiki's Delivery Service"
     ],
     [
-     "El cuento de la princesa Kaguya",
-     "The Tale of the Princess Kaguya"
+     "La tumba de las luciérnagas",
+     "Grave of the Fireflies"
     ],
     [
-     "Recuerdos del ayer",
-     "Only Yesterday"
+     "Porco Rosso",
+     "Porco Rosso"
+    ],
+    [
+     "Pompoko",
+     "Pom Poko"
+    ],
+    [
+     "La princesa Mononoke",
+     "Princess Mononoke"
     ]
    ]
   },
   "nolan": {
-   "qid": "Q25191",
-   "rows": 65,
-   "items": 14,
+   "rows": 68,
+   "items": 17,
    "seconds": 0.2,
    "sample": [
-    [
-     "The Dark Knight",
-     "The Dark Knight"
-    ],
     [
      "Inception",
      "Inception"
@@ -388,8 +194,16 @@
      "The Prestige"
     ],
     [
+     "The Dark Knight",
+     "The Dark Knight"
+    ],
+    [
      "Batman Begins",
      "Batman Begins"
+    ],
+    [
+     "The Dark Knight Rises",
+     "The Dark Knight Rises"
     ],
     [
      "Memento",
@@ -404,17 +218,32 @@
      "Following"
     ],
     [
-     "The Dark Knight Rises",
-     "The Dark Knight Rises"
+     "Doodle Bug",
+     "Doodlebug"
+    ],
+    [
+     "Interstellar",
+     "Interstellar"
+    ],
+    [
+     "Tenet",
+     "Tenet"
+    ],
+    [
+     null,
+     null
     ]
    ]
   },
   "a24": {
-   "qid": "Q16248298",
-   "rows": 686,
-   "items": 150,
-   "seconds": 1.0,
+   "rows": 705,
+   "items": 164,
+   "seconds": 35.0,
    "sample": [
+    [
+     "Dream Scenario",
+     "Dream Scenario"
+    ],
     [
      "The Zone of Interest",
      "The Zone of Interest"
@@ -422,6 +251,26 @@
     [
      "Past Lives",
      "Past Lives"
+    ],
+    [
+     "Queer",
+     "Queer"
+    ],
+    [
+     "Alba",
+     "Alba"
+    ],
+    [
+     "A Different Man",
+     "A Different Man"
+    ],
+    [
+     null,
+     "Wizards!"
+    ],
+    [
+     "The Legend of Ochi",
+     "The Legend of Ochi"
     ],
     [
      "MaXXXine",
@@ -436,25 +285,36 @@
      "Problemista"
     ],
     [
-     "Queer",
-     "Queer"
-    ],
-    [
-     "Marty Supreme",
-     "Marty Supreme"
-    ],
-    [
-     null,
-     "The Last of the Sea Women"
+     "The Spectacular Now",
+     "The Spectacular Now"
     ]
    ]
   },
   "halloween": {
-   "qid": "Q200092",
-   "rows": 4700,
-   "items": 1440,
-   "seconds": 1.9,
+   "rows": 4735,
+   "items": 1460,
+   "seconds": 21.9,
    "sample": [
+    [
+     "Halloween",
+     "Halloween"
+    ],
+    [
+     "The Cell",
+     "The Cell"
+    ],
+    [
+     "Frenesí",
+     "Frenzy"
+    ],
+    [
+     "30 Days of Night",
+     "30 Days of Night"
+    ],
+    [
+     "30 Days of Night: Dark Days",
+     "30 Days of Night: Dark Days"
+    ],
     [
      "Sobreviven",
      "They Live"
@@ -468,39 +328,27 @@
      "Ginger Snaps Back"
     ],
     [
-     "The Blob",
-     "The Blob"
+     "Ovejas asesinas",
+     "Black Sheep"
     ],
     [
-     "The Raven",
-     "The Raven"
+     "Las novias de Fu-Manchú",
+     "The Brides of Fu Manchu"
     ],
     [
-     "Blood Simple",
-     "Blood Simple"
+     "Aullidos",
+     "The Breed"
     ],
     [
-     "Anacondas: Trail of Blood",
-     "Anacondas: Trail of Blood"
-    ],
-    [
-     "Dr. Jekyll and Mr. Hyde",
-     "Dr. Jekyll and Mr. Hyde"
+     "The Village",
+     "The Village"
     ]
    ]
   },
-  "navidad": {
-   "qid": "Q1257444",
-   "rows": 0,
-   "items": 0,
-   "seconds": 0.1,
-   "sample": []
-  },
   "oscar": {
-   "qid": "Q102427",
    "rows": 368,
    "items": 98,
-   "seconds": 0.8,
+   "seconds": 8.8,
    "sample": [
     [
      "Lo que el viento se llevó",
@@ -533,79 +381,24 @@
     [
      "Sonrisas y Lágrimas",
      "The Sound of Music"
+    ],
+    [
+     "Midnight Cowboy",
+     "Midnight Cowboy"
+    ],
+    [
+     "El golpe",
+     "The Sting"
+    ],
+    [
+     "El paciente inglés",
+     "The English Patient"
+    ],
+    [
+     "Unforgiven",
+     "Unforgiven"
     ]
    ]
-  }
- },
- "tvmaze": {
-  "La casa de papel": {
-   "name": "La Casa de Papel",
-   "premiered": "2017-05-02",
-   "network": null,
-   "web": "Netflix"
-  },
-  "Juego de tronos": {
-   "name": "Game of Thrones",
-   "premiered": "2011-04-17",
-   "network": "HBO",
-   "web": null
-  },
-  "Los Soprano": {
-   "name": "The Sopranos",
-   "premiered": "1999-01-10",
-   "network": "HBO",
-   "web": null
-  },
-  "El juego del calamar": {
-   "error": "HTTP Error 404: Not Found"
-  },
-  "Stranger Things": {
-   "name": "Stranger Things",
-   "premiered": "2016-07-15",
-   "network": null,
-   "web": "Netflix"
-  },
-  "The Bear": {
-   "name": "The Bear",
-   "premiered": "2022-06-23",
-   "network": null,
-   "web": "Hulu"
-  },
-  "Severance": {
-   "name": "Severance",
-   "premiered": "2022-02-18",
-   "network": null,
-   "web": "Apple TV"
-  },
-  "Separación": {
-   "name": "Separation Anxiety",
-   "premiered": "2016-03-08",
-   "network": "TBS",
-   "web": null
-  },
-  "The Last of Us": {
-   "name": "The Last of Us",
-   "premiered": "2023-01-15",
-   "network": "HBO",
-   "web": null
-  },
-  "Arcane": {
-   "name": "Arcane: League of Legends",
-   "premiered": "2021-11-06",
-   "network": null,
-   "web": "Netflix"
-  },
-  "Shogun": {
-   "name": "Shōgun",
-   "premiered": "2024-02-27",
-   "network": null,
-   "web": "Hulu"
-  },
-  "Rebelde": {
-   "name": "Rebelde",
-   "premiered": "2004-10-04",
-   "network": "Las Estrellas",
-   "web": null
   }
  },
  "errors": []
