@@ -1,0 +1,612 @@
+{
+ "directors": {
+  "Christopher Nolan": [
+   [
+    "Q25191",
+    18
+   ]
+  ],
+  "Denis Villeneuve": [
+   [
+    "Q548823",
+    22
+   ]
+  ],
+  "Quentin Tarantino": [
+   [
+    "Q3772",
+    23
+   ]
+  ],
+  "Martin Scorsese": [
+   [
+    "Q41148",
+    62
+   ]
+  ],
+  "Steven Spielberg": [
+   [
+    "Q8877",
+    54
+   ]
+  ],
+  "Hayao Miyazaki": [
+   [
+    "Q55400",
+    34
+   ]
+  ],
+  "Guillermo del Toro": [
+   [
+    "Q219124",
+    20
+   ]
+  ],
+  "Alfonso Cuarón": [
+   [
+    "Q28028",
+    14
+   ]
+  ],
+  "Alejandro González Iñárritu": [
+   [
+    "Q55215",
+    15
+   ]
+  ],
+  "Pedro Almodóvar": [
+   [
+    "Q55171",
+    30
+   ]
+  ],
+  "Wes Anderson": [
+   [
+    "Q223687",
+    22
+   ]
+  ],
+  "David Fincher": [
+   [
+    "Q184903",
+    24
+   ]
+  ],
+  "Ridley Scott": [
+   [
+    "Q56005",
+    43
+   ]
+  ],
+  "Stanley Kubrick": [
+   [
+    "Q2001",
+    17
+   ]
+  ],
+  "Tim Burton": [
+   [
+    "Q56008",
+    42
+   ]
+  ],
+  "Greta Gerwig": [
+   [
+    "Q271967",
+    6
+   ]
+  ],
+  "Bong Joon-ho": [
+   [
+    "Q495980",
+    13
+   ]
+  ],
+  "Sofia Coppola": [
+   [
+    "Q193628",
+    12
+   ]
+  ],
+  "Francis Ford Coppola": [
+   [
+    "Q56094",
+    35
+   ]
+  ],
+  "Alfred Hitchcock": [
+   [
+    "Q7374",
+    73
+   ]
+  ],
+  "James Cameron": [
+   [
+    "Q42574",
+    22
+   ]
+  ],
+  "Peter Jackson": [
+   [
+    "Q4465",
+    26
+   ]
+  ],
+  "Alejandro Amenábar": [
+   [
+    "Q274070",
+    12
+   ]
+  ],
+  "Juan Antonio Bayona": [],
+  "Clint Eastwood": [
+   [
+    "Q43203",
+    42
+   ]
+  ],
+  "Jordan Peele": [
+   [
+    "Q3371986",
+    3
+   ]
+  ],
+  "Yorgos Lanthimos": [
+   [
+    "Q975410",
+    14
+   ]
+  ],
+  "Paul Thomas Anderson": [
+   [
+    "Q25132",
+    17
+   ]
+  ]
+ },
+ "studios": {
+  "Studio Ghibli": [
+   [
+    "Q182950",
+    58
+   ]
+  ],
+  "A24": [
+   [
+    "Q16248298",
+    214
+   ]
+  ],
+  "Pixar": [
+   [
+    "Q127552",
+    106
+   ]
+  ],
+  "Walt Disney Animation Studios": [
+   [
+    "Q1047410",
+    113
+   ]
+  ],
+  "Marvel Studios": [
+   [
+    "Q367466",
+    81
+   ]
+  ],
+  "Lucasfilm": [
+   [
+    "Q242446",
+    64
+   ]
+  ],
+  "DreamWorks Animation": [
+   [
+    "Q500088",
+    116
+   ]
+  ],
+  "Blumhouse Productions": [
+   [
+    "Q16984664",
+    107
+   ]
+  ],
+  "Laika": [
+   [
+    "Q54805138",
+    103
+   ],
+   [
+    "Q1314323",
+    9
+   ]
+  ],
+  "Aardman Animations": [
+   [
+    "Q301092",
+    41
+   ]
+  ],
+  "Neon": [
+   [
+    "Q30603559",
+    80
+   ]
+  ],
+  "Illumination": [
+   [
+    "Q1189512",
+    19
+   ]
+  ],
+  "Legendary Pictures": [
+   [
+    "Q621364",
+    81
+   ]
+  ],
+  "Searchlight Pictures": [
+   [
+    "Q953040",
+    258
+   ]
+  ],
+  "Toho": [
+   [
+    "Q875920",
+    955
+   ]
+  ],
+  "Sony Pictures Animation": [
+   [
+    "Q1416835",
+    43
+   ]
+  ],
+  "Amblin Entertainment": [
+   [
+    "Q457893",
+    124
+   ]
+  ]
+ },
+ "qids": {
+  "Q200092": [
+   [
+    "cine de terror",
+    "horror film"
+   ]
+  ],
+  "Q1257444": [
+   [
+    "adaptación cinematográfica",
+    "film adaptation"
+   ]
+  ],
+  "Q102427": [
+   [
+    "Óscar a la mejor película",
+    "Academy Award for Best Picture"
+   ]
+  ],
+  "Q11424": [
+   [
+    "película",
+    "film"
+   ]
+  ],
+  "Q202866": [
+   [
+    "película de animación",
+    "animated film"
+   ]
+  ],
+  "Q29168811": [
+   [
+    "película de animación",
+    "animated feature film"
+   ]
+  ],
+  "Q506240": [
+   [
+    "telefilme",
+    "television film"
+   ]
+  ],
+  "Q24869": [
+   [
+    "largometraje",
+    "feature film"
+   ]
+  ],
+  "Q2526255": [
+   [
+    "director de cine",
+    "film director"
+   ]
+  ]
+ },
+ "collections": {
+  "ghibli": {
+   "qid": "Q182950",
+   "rows": 26,
+   "items": 9,
+   "seconds": 0.4,
+   "sample": [
+    [
+     "Mi vecino Totoro",
+     "My Neighbor Totoro"
+    ],
+    [
+     "Puedo escuchar el mar",
+     "Ocean Waves"
+    ],
+    [
+     null,
+     "Kinyou roadshow opening"
+    ],
+    [
+     null,
+     "Yasuo Ōtsuka’s Joy in Motion"
+    ],
+    [
+     "The Red Turtle",
+     "The Red Turtle"
+    ],
+    [
+     "Earwig y la bruja",
+     "Earwig and the Witch"
+    ],
+    [
+     "El cuento de la princesa Kaguya",
+     "The Tale of the Princess Kaguya"
+    ],
+    [
+     "Recuerdos del ayer",
+     "Only Yesterday"
+    ]
+   ]
+  },
+  "nolan": {
+   "qid": "Q25191",
+   "rows": 65,
+   "items": 14,
+   "seconds": 0.2,
+   "sample": [
+    [
+     "The Dark Knight",
+     "The Dark Knight"
+    ],
+    [
+     "Inception",
+     "Inception"
+    ],
+    [
+     "The Prestige",
+     "The Prestige"
+    ],
+    [
+     "Batman Begins",
+     "Batman Begins"
+    ],
+    [
+     "Memento",
+     "Memento"
+    ],
+    [
+     "Insomnia",
+     "Insomnia"
+    ],
+    [
+     "Following",
+     "Following"
+    ],
+    [
+     "The Dark Knight Rises",
+     "The Dark Knight Rises"
+    ]
+   ]
+  },
+  "a24": {
+   "qid": "Q16248298",
+   "rows": 686,
+   "items": 150,
+   "seconds": 1.0,
+   "sample": [
+    [
+     "The Zone of Interest",
+     "The Zone of Interest"
+    ],
+    [
+     "Past Lives",
+     "Past Lives"
+    ],
+    [
+     "MaXXXine",
+     "MaXXXine"
+    ],
+    [
+     "Háblame",
+     "Talk to Me"
+    ],
+    [
+     "Problemista",
+     "Problemista"
+    ],
+    [
+     "Queer",
+     "Queer"
+    ],
+    [
+     "Marty Supreme",
+     "Marty Supreme"
+    ],
+    [
+     null,
+     "The Last of the Sea Women"
+    ]
+   ]
+  },
+  "halloween": {
+   "qid": "Q200092",
+   "rows": 4700,
+   "items": 1440,
+   "seconds": 1.9,
+   "sample": [
+    [
+     "Sobreviven",
+     "They Live"
+    ],
+    [
+     "Evil Dead",
+     "Evil Dead"
+    ],
+    [
+     "Ginger Snaps: El Origen",
+     "Ginger Snaps Back"
+    ],
+    [
+     "The Blob",
+     "The Blob"
+    ],
+    [
+     "The Raven",
+     "The Raven"
+    ],
+    [
+     "Blood Simple",
+     "Blood Simple"
+    ],
+    [
+     "Anacondas: Trail of Blood",
+     "Anacondas: Trail of Blood"
+    ],
+    [
+     "Dr. Jekyll and Mr. Hyde",
+     "Dr. Jekyll and Mr. Hyde"
+    ]
+   ]
+  },
+  "navidad": {
+   "qid": "Q1257444",
+   "rows": 0,
+   "items": 0,
+   "seconds": 0.1,
+   "sample": []
+  },
+  "oscar": {
+   "qid": "Q102427",
+   "rows": 368,
+   "items": 98,
+   "seconds": 0.8,
+   "sample": [
+    [
+     "Lo que el viento se llevó",
+     "Gone with the Wind"
+    ],
+    [
+     "Dances with Wolves",
+     "Dances with Wolves"
+    ],
+    [
+     "American Beauty",
+     "American Beauty"
+    ],
+    [
+     "Hamlet",
+     "Hamlet"
+    ],
+    [
+     null,
+     "Titanic"
+    ],
+    [
+     "El padrino",
+     "The Godfather"
+    ],
+    [
+     "Argo",
+     "Argo"
+    ],
+    [
+     "Sonrisas y Lágrimas",
+     "The Sound of Music"
+    ]
+   ]
+  }
+ },
+ "tvmaze": {
+  "La casa de papel": {
+   "name": "La Casa de Papel",
+   "premiered": "2017-05-02",
+   "network": null,
+   "web": "Netflix"
+  },
+  "Juego de tronos": {
+   "name": "Game of Thrones",
+   "premiered": "2011-04-17",
+   "network": "HBO",
+   "web": null
+  },
+  "Los Soprano": {
+   "name": "The Sopranos",
+   "premiered": "1999-01-10",
+   "network": "HBO",
+   "web": null
+  },
+  "El juego del calamar": {
+   "error": "HTTP Error 404: Not Found"
+  },
+  "Stranger Things": {
+   "name": "Stranger Things",
+   "premiered": "2016-07-15",
+   "network": null,
+   "web": "Netflix"
+  },
+  "The Bear": {
+   "name": "The Bear",
+   "premiered": "2022-06-23",
+   "network": null,
+   "web": "Hulu"
+  },
+  "Severance": {
+   "name": "Severance",
+   "premiered": "2022-02-18",
+   "network": null,
+   "web": "Apple TV"
+  },
+  "Separación": {
+   "name": "Separation Anxiety",
+   "premiered": "2016-03-08",
+   "network": "TBS",
+   "web": null
+  },
+  "The Last of Us": {
+   "name": "The Last of Us",
+   "premiered": "2023-01-15",
+   "network": "HBO",
+   "web": null
+  },
+  "Arcane": {
+   "name": "Arcane: League of Legends",
+   "premiered": "2021-11-06",
+   "network": null,
+   "web": "Netflix"
+  },
+  "Shogun": {
+   "name": "Shōgun",
+   "premiered": "2024-02-27",
+   "network": null,
+   "web": "Hulu"
+  },
+  "Rebelde": {
+   "name": "Rebelde",
+   "premiered": "2004-10-04",
+   "network": "Las Estrellas",
+   "web": null
+  }
+ },
+ "errors": []
+}
