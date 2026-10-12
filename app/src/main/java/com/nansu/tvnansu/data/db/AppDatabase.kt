@@ -25,8 +25,9 @@ import kotlinx.coroutines.flow.Flow
         RecentChannelEntity::class,
         ProfileEntity::class,
         IntroMarkerEntity::class,
+        SeriesMetaEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -47,6 +48,14 @@ abstract class AppDatabase : RoomDatabase() {
                 }
                 db.execSQL("CREATE TABLE IF NOT EXISTS `intro_marker` (`seriesKey` TEXT NOT NULL, `startMs` INTEGER NOT NULL, `endMs` INTEGER NOT NULL, PRIMARY KEY(`seriesKey`))")
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_programme_playlistId_start` ON `programme` (`playlistId`, `start`)")
+            }
+        }
+
+        /** v2 → v3: streaming platform per series. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `series_meta` (`seriesKey` TEXT NOT NULL, `playlistId` INTEGER NOT NULL, `seriesId` TEXT NOT NULL, `platform` TEXT, `source` TEXT NOT NULL, `checkedAt` INTEGER NOT NULL, PRIMARY KEY(`seriesKey`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_series_meta_playlistId_platform` ON `series_meta` (`playlistId`, `platform`)")
             }
         }
 
@@ -280,6 +289,35 @@ interface AppDao {
 
     @Query("DELETE FROM recent_channel WHERE profileId = :prof")
     suspend fun clearProfileRecents(prof: Long)
+
+    // ---- Series platforms ----
+    @Upsert
+    suspend fun upsertSeriesMeta(items: List<SeriesMetaEntity>)
+
+    @Query("SELECT seriesKey FROM series_meta WHERE playlistId = :pid AND (platform IS NOT NULL OR checkedAt > :since)")
+    suspend fun settledMetaKeys(pid: Long, since: Long): List<String>
+
+    @Query("SELECT remoteId, name, year, categoryId FROM series WHERE playlistId = :pid ORDER BY added DESC, id DESC")
+    suspend fun seriesLite(pid: Long): List<SeriesLite>
+
+    @Query("SELECT s.*, m.platform AS platform FROM series s JOIN series_meta m ON m.seriesKey = (s.playlistId || ':' || s.remoteId) WHERE s.playlistId = :pid AND m.platform IS NOT NULL ORDER BY s.added DESC, s.id DESC")
+    suspend fun seriesWithPlatform(pid: Long): List<SeriesWithPlatform>
+
+    @Query("SELECT s.*, m.platform AS platform FROM series s JOIN series_meta m ON m.seriesKey = (s.playlistId || ':' || s.remoteId) WHERE s.playlistId = :pid AND m.platform = :platform ORDER BY s.added DESC, s.id DESC")
+    suspend fun seriesOfPlatform(pid: Long, platform: String): List<SeriesWithPlatform>
+
+    @Query("SELECT COUNT(*) FROM series_meta WHERE playlistId = :pid AND platform IS NOT NULL")
+    suspend fun classifiedCount(pid: Long): Int
+
+    @Query("DELETE FROM series_meta WHERE playlistId = :pid")
+    suspend fun clearSeriesMeta(pid: Long)
+
+    @Query("DELETE FROM series_meta WHERE playlistId = :pid AND source = 'tvmaze' AND platform IS NULL")
+    suspend fun clearUnmatchedMeta(pid: Long)
+
+    // ---- Movie index for collections ----
+    @Query("SELECT * FROM movie WHERE playlistId = :pid")
+    suspend fun allMovies(pid: Long): List<MovieEntity>
 
     // ---- Intro markers ----
     @Query("SELECT * FROM intro_marker WHERE seriesKey = :key")
