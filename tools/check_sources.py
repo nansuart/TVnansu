@@ -8,8 +8,16 @@ def get(url):
     with urllib.request.urlopen(req, timeout=90) as r:
         return json.loads(r.read().decode("utf-8"))
 
+ERRORS = []
+
 def sparql(q):
-    return get("https://query.wikidata.org/sparql?format=json&query=" + urllib.parse.quote(q))["results"]["bindings"]
+    for attempt in range(3):
+        try:
+            return get("https://query.wikidata.org/sparql?format=json&query=" + urllib.parse.quote(q))["results"]["bindings"]
+        except Exception as e:
+            ERRORS.append(f"{type(e).__name__}: {e} :: {q[:120]}")
+            time.sleep(5 * (attempt + 1))
+    return []
 
 directors = ["Christopher Nolan","Denis Villeneuve","Quentin Tarantino","Martin Scorsese","Steven Spielberg",
     "Hayao Miyazaki","Guillermo del Toro","Alfonso Cuarón","Alejandro González Iñárritu","Pedro Almodóvar",
@@ -80,6 +88,7 @@ for title in ["La casa de papel","Juego de tronos","Los Soprano","El juego del c
         report["tvmaze"][title] = {"error": str(e)}
     time.sleep(0.6)
 
+report["errors"] = ERRORS
 os.makedirs("tools/out", exist_ok=True)
 json.dump(report, open("tools/out/report.json", "w"), ensure_ascii=False, indent=1)
 print(json.dumps(report, ensure_ascii=False)[:3000])
