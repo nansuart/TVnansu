@@ -31,6 +31,7 @@ import com.nansu.tvnansu.data.remote.map
 import com.nansu.tvnansu.data.remote.str
 import com.nansu.tvnansu.data.remote.withStream
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -65,6 +66,10 @@ class Repository(
     val playlists: Flow<List<PlaylistEntity>> = dao.playlistsFlow()
 
     private val syncMutex = Mutex()
+
+    val platforms = PlatformClassifier(dao, http)
+    private var platformJob: Job? = null
+    val collections = Collections(dao, http, prefs)
     private val seriesCache = LruCache<String, SeriesDetails>(24)
     private val shortEpgCache = LruCache<String, Pair<Long, List<XtreamApi.ShortEpg>>>(200)
 
@@ -140,6 +145,7 @@ class Repository(
 
     suspend fun deletePlaylist(id: Long) = withContext(Dispatchers.IO) {
         clearCatalog(id)
+        dao.clearSeriesMeta(id)
         dao.clearProgrammes(id)
         dao.clearProgress(id)
         dao.clearFavorites(id)
@@ -175,6 +181,8 @@ class Repository(
             syncState.value = SyncState.Idle
             dataVersion.value++
             scope.launch { syncEpg(p.id) }
+            classifyPlatforms(p.id)
+            collections.invalidateIndex()
             true
         } catch (e: Exception) {
             syncState.value = SyncState.Failed(e.message ?: "Error desconocido")
@@ -194,8 +202,9 @@ class Repository(
             val hours = prefs.autoRefreshHours
             if (p.lastSync == 0L || (hours > 0 && now - p.lastSync > hours * 3_600_000L)) {
                 sync(p.id)
-            } else if (now - p.lastEpgSync > 12 * 3_600_000L) {
-                syncEpg(p.id)
+            } else {
+                classifyPlatforms(p.id)
+                if (now - p.lastEpgSync > 12 * 3_600_000L) syncEpg(p.id)
             }
         }
     }
@@ -813,6 +822,37 @@ class Repository(
         dao.deleteProfile(id)
         if (profileId.value == id) dao.profiles().firstOrNull()?.let { setProfile(it.id) }
     }
+
+    // ------------------------------------------------------------------ platforms
+
+    /** Starts (or keeps running) the background platform classification. */
+    fun classifyPlatforms(pid: Long, retryUnmatched: Boolean = false) {
+        if (platformJob?.isActive == true) return
+        platformJob = scope.launch {
+            if (retryUnmatched) dao.clearUnmatchedMeta(pid)
+            runCatching { platforms.run(pid) }
+            platforms.state.value = SyncState.Idle
+        }
+    }
+
+    /** Series grouped by platform, biggest platforms first. */
+    suspend fun seriesByPlatform(pid: Long, minCount: Int = 4, maxPlatforms: Int = 14): List<Pair<String, List<SeriesEntity>>> =
+        withContext(Dispatchers.IO) {
+            dao.seriesWithPlatform(pid)
+                .distinctBy { it.series.remoteId }
+                .groupBy({ it.platform }, { it.series })
+                .filter { it.value.size >= minCount }
+                .entries
+                .sortedByDescending { it.value.size }
+                .take(maxPlatforms)
+                .map { it.key to it.value }
+        }
+
+    suspend fun seriesOfPlatform(pid: Long, platform: String): List<SeriesEntity> = withContext(Dispatchers.IO) {
+        dao.seriesOfPlatform(pid, platform).map { it.series }.distinctBy { it.remoteId }
+    }
+
+    suspend fun classifiedCount(pid: Long): Int = dao.classifiedCount(pid)
 
     // ------------------------------------------------------------------ live now (home)
 

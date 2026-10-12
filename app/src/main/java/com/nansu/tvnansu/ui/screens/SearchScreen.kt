@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
+import com.nansu.tvnansu.data.CollectionDef
+import com.nansu.tvnansu.data.Collections
 import com.nansu.tvnansu.data.db.ChannelEntity
 import com.nansu.tvnansu.data.db.Kind
 import com.nansu.tvnansu.data.db.MovieEntity
@@ -75,6 +77,22 @@ fun SearchScreen() {
         )
     }
 
+    // Directors and studios: the app's own collections plus a Wikidata search.
+    val people by produceState(emptyList<CollectionDef>(), query) {
+        val q = query.trim()
+        if (q.length < 3) {
+            value = emptyList()
+            return@produceState
+        }
+        delay(700)
+        val key = Collections.norm(q)
+        val local = runCatching { repo.collections.definitions() }.getOrDefault(emptyList())
+            .filter { it.group != "listas" && Collections.norm(it.title).contains(key) }
+        value = local
+        val remote = runCatching { repo.collections.search(q) }.getOrDefault(emptyList())
+        value = (local + remote).distinctBy { it.qid }.take(8)
+    }
+
     Row(
         Modifier
             .fillMaxSize()
@@ -112,12 +130,12 @@ fun SearchScreen() {
         ) {
             when {
                 query.trim().length < 2 -> Text(
-                    "Escribe al menos dos letras para buscar canales, películas y series.",
+                    "Escribe al menos dos letras para buscar canales, películas y series. Con tres o más también aparecen directores y estudios.",
                     style = Type.Body,
                     color = Palette.TextFaint,
                     modifier = Modifier.padding(top = 16.dp, end = 48.dp),
                 )
-                results.isEmpty -> Text(
+                results.isEmpty && people.isEmpty() -> Text(
                     "Sin resultados para \"${query.trim()}\"",
                     style = Type.Body,
                     color = Palette.TextDim,
@@ -129,6 +147,21 @@ fun SearchScreen() {
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 60.dp),
                     ) {
+                        if (people.isNotEmpty()) {
+                            item(key = "people") {
+                                Shelf("Directores y estudios") {
+                                    items(people, key = { it.id }) { def ->
+                                        CollectionTile(
+                                            title = def.title,
+                                            subtitle = def.subtitle?.replaceFirstChar { it.uppercase() }
+                                                ?: if (def.group == "directores") "Director" else "Estudio",
+                                            onClick = { actions.openGrid(Kind.MOVIE, COLLECTION_PREFIX + def.id, def.title) },
+                                            modifier = Modifier.focusMemory("sr:wd:${def.id}", memory),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         if (results.channels.isNotEmpty()) {
                             item(key = "ch") {
                                 Shelf("Canales", modifier = Modifier.padding(start = 0.dp)) {

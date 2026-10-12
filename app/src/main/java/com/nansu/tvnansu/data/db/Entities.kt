@@ -199,3 +199,32 @@ data class RecentChannelEntity(
     val remoteId: String,
     val watchedAt: Long,
 )
+
+/** Streaming platform of a series (Netflix, HBO Max…), from the provider's categories or TVmaze. */
+@Entity(
+    tableName = "series_meta",
+    indices = [Index(value = ["playlistId", "platform"])]
+)
+data class SeriesMetaEntity(
+    /** "playlistId:seriesId" */
+    @PrimaryKey val seriesKey: String,
+    val playlistId: Long,
+    val seriesId: String,
+    val platform: String?,
+    /** "categoria" or "tvmaze" */
+    val source: String,
+    val checkedAt: Long,
+)
+
+/** Light series row for background jobs. */
+data class SeriesLite(
+    val remoteId: String,
+    val name: String,
+    val year: String?,
+    val categoryId: String,
+)
+
+data class SeriesWithPlatform(
+    @androidx.room.Embedded val series: SeriesEntity,
+    val platform: String,
+)

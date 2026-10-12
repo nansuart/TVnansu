@@ -33,6 +33,7 @@ class Actions(
     fun openSeries(s: SeriesEntity) = nav.push(Dest.Series(s.remoteId))
     fun openSeries(remoteId: String) = nav.push(Dest.Series(remoteId))
     fun openGrid(kind: Kind, categoryId: String, title: String) = nav.push(Dest.Grid(kind, categoryId, title))
+    fun openPlatform(name: String) = nav.push(Dest.Platform(name))
 
     fun playChannels(channels: List<ChannelEntity>, index: Int) {
         if (channels.isEmpty()) return

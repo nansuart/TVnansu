@@ -22,6 +22,7 @@ import com.nansu.tvnansu.ui.screens.AddPlaylistScreen
 import com.nansu.tvnansu.ui.screens.CategoryGridScreen
 import com.nansu.tvnansu.ui.screens.MainScreen
 import com.nansu.tvnansu.ui.screens.MovieDetailScreen
+import com.nansu.tvnansu.ui.screens.PlatformScreen
 import com.nansu.tvnansu.ui.screens.ProfileEditScreen
 import com.nansu.tvnansu.ui.screens.ProfilePickerScreen
 import com.nansu.tvnansu.ui.screens.SeriesDetailScreen
@@ -77,6 +78,7 @@ fun AppRoot() {
                     is Dest.Movie -> MovieDetailScreen(current.remoteId)
                     is Dest.Series -> SeriesDetailScreen(current.remoteId)
                     is Dest.Grid -> CategoryGridScreen(current.kind, current.categoryId, current.title)
+                    is Dest.Platform -> PlatformScreen(current.name)
                     is Dest.Player -> PlayerScreen(current.request)
                 }
             }

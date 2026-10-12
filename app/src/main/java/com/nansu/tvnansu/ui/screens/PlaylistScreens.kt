@@ -1,5 +1,6 @@
 package com.nansu.tvnansu.ui.screens
 
+import androidx.compose.runtime.produceState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -445,6 +446,30 @@ fun SettingsScreen() {
                 },
             )
         }
+
+        Spacer(Modifier.height(32.dp))
+        Text("Plataformas y colecciones", style = Type.Title, color = Palette.Text)
+        Spacer(Modifier.height(12.dp))
+        val platformState by repo.platforms.state.collectAsState()
+        val platformVersion by repo.platforms.version.collectAsState()
+        val classified by produceState(0, activeId, platformVersion) { value = repo.classifiedCount(activeId) }
+        SettingRow(
+            title = "Series clasificadas por plataforma: $classified",
+            description = (platformState as? SyncState.Running)?.message
+                ?: "Se clasifican solas en segundo plano. Si alguna serie no aparece en su plataforma, puedes volver a intentarlo.",
+        ) {
+            PillButton(
+                text = "Reintentar",
+                enabled = platformState !is SyncState.Running,
+                onClick = { repo.classifyPlatforms(activeId, retryUnmatched = true) },
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Plataformas de series: TVmaze (CC BY-SA 4.0). Estudios, directores y listas: Wikidata (CC0). Las colecciones se editan en colecciones.json del repositorio.",
+            style = Type.Caption,
+            color = Palette.TextFaint,
+        )
 
         Spacer(Modifier.height(32.dp))
         Text(

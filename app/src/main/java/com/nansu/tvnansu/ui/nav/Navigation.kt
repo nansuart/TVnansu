@@ -13,6 +13,7 @@ sealed class Dest(val key: String) {
     data class ProfileEdit(val id: Long?) : Dest("profileEdit:$id")
     data class Movie(val remoteId: String) : Dest("movie:$remoteId")
     data class Series(val remoteId: String) : Dest("series:$remoteId")
+    data class Platform(val name: String) : Dest("platform:$name")
     data class Grid(val kind: Kind, val categoryId: String, val title: String) : Dest("grid:${kind.name}:$categoryId")
     data class Player(val request: PlayRequest, val stamp: Long = System.nanoTime()) : Dest("player:$stamp")
 }

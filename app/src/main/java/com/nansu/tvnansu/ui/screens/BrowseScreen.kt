@@ -1,5 +1,11 @@
 package com.nansu.tvnansu.ui.screens
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,9 +63,23 @@ fun SeriesEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, ser
 
 const val ROW_LIMIT = 40
 
+const val PLATFORM_PREFIX = "platform:"
+const val COLLECTION_PREFIX = "collection:"
+
 suspend fun loadCategoryItems(repo: Repository, pid: Long, isSeries: Boolean, categoryId: String, limit: Int): List<BrowseItem> =
-    if (isSeries) repo.dao.seriesIn(pid, categoryId, limit).distinctBy { it.remoteId }.map { it.toBrowse() }
-    else repo.dao.moviesIn(pid, categoryId, limit).distinctBy { it.remoteId }.map { it.toBrowse() }
+    when {
+        categoryId.startsWith(PLATFORM_PREFIX) ->
+            repo.seriesOfPlatform(pid, categoryId.removePrefix(PLATFORM_PREFIX)).take(limit).map { it.toBrowse() }
+        categoryId.startsWith(COLLECTION_PREFIX) -> {
+            val id = categoryId.removePrefix(COLLECTION_PREFIX)
+            val ready = repo.collections.results.value[id]
+            val def = repo.collections.find(id)
+            val movies = ready?.movies ?: if (def != null) repo.collections.match(pid, def) else emptyList()
+            movies.take(limit).map { it.toBrowse() }
+        }
+        isSeries -> repo.dao.seriesIn(pid, categoryId, limit).distinctBy { it.remoteId }.map { it.toBrowse() }
+        else -> repo.dao.moviesIn(pid, categoryId, limit).distinctBy { it.remoteId }.map { it.toBrowse() }
+    }
 
 @Composable
 fun BrowseScreen(isSeries: Boolean) {
@@ -89,6 +109,27 @@ fun BrowseScreen(isSeries: Boolean) {
     }
     val rowCache = remember(pid, version, isSeries) { mutableStateMapOf<String, List<BrowseItem>>() }
     val hero = rememberHeroState()
+
+    // Series: one row per streaming platform (classified in the background).
+    val platformVersion by repo.platforms.version.collectAsState()
+    val platformRows by produceState(emptyList<Pair<String, List<BrowseItem>>>(), pid, version, platformVersion, isSeries) {
+        if (isSeries) value = repo.seriesByPlatform(pid).map { (name, list) -> name to list.map { it.toBrowse() } }
+    }
+
+    // Movies: studios, directors and themed lists from Wikidata.
+    val collectionResults by repo.collections.results.collectAsState()
+    LaunchedEffect(pid, version, isSeries) {
+        if (!isSeries) repo.scope.launch { repo.collections.loadAll(pid) }
+    }
+    val lists = remember(collectionResults) {
+        collectionResults.values.filter { it.def.group == "listas" && it.movies.size >= 5 }
+    }
+    val studios = remember(collectionResults) {
+        collectionResults.values.filter { it.def.group == "estudios" && it.movies.size >= 3 }.sortedByDescending { it.movies.size }
+    }
+    val directors = remember(collectionResults) {
+        collectionResults.values.filter { it.def.group == "directores" && it.movies.size >= 3 }.sortedByDescending { it.movies.size }
+    }
 
     LaunchedEffect(recent) {
         if (hero.target == null) hero.target = recent.firstOrNull()?.hero
@@ -142,6 +183,65 @@ fun BrowseScreen(isSeries: Boolean) {
                 }
             }
         }
+        if (isSeries) {
+            items(platformRows, key = { "pf:" + it.first }) { (name, list) ->
+                Shelf("$name  ·  ${list.size} series") {
+                    items(list.take(ROW_LIMIT), key = { it.remoteId }) { Card(it, "pf:$name") }
+                    item(key = "all") {
+                        ViewAllCard(
+                            width = 120.dp,
+                            onClick = { actions.openPlatform(name) },
+                            modifier = Modifier.focusMemory("s:pf:$name:all", memory),
+                        )
+                    }
+                }
+            }
+        } else {
+            items(lists, key = { "ls:" + it.def.id }) { r ->
+                Shelf(r.def.title) {
+                    items(r.movies.take(ROW_LIMIT).map { it.toBrowse() }, key = { it.remoteId }) { Card(it, "ls:${r.def.id}") }
+                    if (r.movies.size > ROW_LIMIT) {
+                        item(key = "all") {
+                            ViewAllCard(
+                                width = 120.dp,
+                                onClick = { actions.openGrid(Kind.MOVIE, COLLECTION_PREFIX + r.def.id, r.def.title) },
+                                modifier = Modifier.focusMemory("m:ls:${r.def.id}:all", memory),
+                            )
+                        }
+                    }
+                }
+            }
+            if (studios.isNotEmpty()) {
+                item(key = "studios") {
+                    Shelf("Estudios") {
+                        items(studios, key = { it.def.id }) { r ->
+                            CollectionTile(
+                                title = r.def.title,
+                                subtitle = "${r.movies.size} películas",
+                                onClick = { actions.openGrid(Kind.MOVIE, COLLECTION_PREFIX + r.def.id, r.def.title) },
+                                onFocused = { r.movies.firstOrNull()?.let { hero.target = movieHero(it).copy(eyebrow = r.def.title.uppercase()) } },
+                                modifier = Modifier.focusMemory("m:st:${r.def.id}", memory),
+                            )
+                        }
+                    }
+                }
+            }
+            if (directors.isNotEmpty()) {
+                item(key = "directors") {
+                    Shelf("Directores") {
+                        items(directors, key = { it.def.id }) { r ->
+                            CollectionTile(
+                                title = r.def.title,
+                                subtitle = "${r.movies.size} películas",
+                                onClick = { actions.openGrid(Kind.MOVIE, COLLECTION_PREFIX + r.def.id, r.def.title) },
+                                onFocused = { r.movies.firstOrNull()?.let { hero.target = movieHero(it).copy(eyebrow = "DE " + r.def.title.uppercase()) } },
+                                modifier = Modifier.focusMemory("m:dr:${r.def.id}", memory),
+                            )
+                        }
+                    }
+                }
+            }
+        }
         items(cats, key = { "cat:" + it.remoteId }) { cat ->
             val loaded = rowCache[cat.remoteId]
             LaunchedEffect(cat.remoteId, pid, version) {
@@ -185,6 +285,69 @@ fun PlaceholderShelf(title: String) {
                         .clip(CardShape)
                         .background(Palette.Surface)
                 )
+            }
+        }
+    }
+}
+
+
+/** Studio or director tile: name set large on a quiet card. */
+@Composable
+fun CollectionTile(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onFocused: () -> Unit = {},
+) {
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    androidx.tv.material3.Surface(
+        onClick = onClick,
+        modifier = modifier
+            .width(220.dp)
+            .height(124.dp)
+            .onFocusChanged { if (it.isFocused) onFocused() },
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.07f),
+        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+            focusedBorder = androidx.tv.material3.Border(
+                androidx.compose.foundation.BorderStroke(2.dp, Palette.Focus), shape = shape,
+            ),
+        ),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = Palette.Surface,
+            contentColor = Palette.Text,
+            focusedContainerColor = Palette.Surface2,
+            focusedContentColor = Palette.Text,
+        ),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(Palette.Surface3, Palette.Surface)
+                    )
+                )
+                .padding(16.dp)
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .width(24.dp)
+                    .height(3.dp)
+                    .background(Palette.Accent)
+            )
+            Column(Modifier.align(Alignment.BottomStart)) {
+                Text(
+                    text = title,
+                    style = Type.Section,
+                    color = Palette.Text,
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, style = Type.Caption, color = Palette.TextDim)
             }
         }
     }

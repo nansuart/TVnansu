@@ -29,11 +29,13 @@ class TVnansuApp : Application(), SingletonImageLoader.Factory {
             .retryOnConnectionFailure(true)
             .build()
         val db = Room.databaseBuilder(this, AppDatabase::class.java, "tvnansu.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .addCallback(AppDatabase.SEED_PROFILE)
             .fallbackToDestructiveMigration(true)
             .build()
         repository = Repository(db, http, Prefs(this))
+        repository.collections.dir = java.io.File(filesDir, "colecciones").apply { mkdirs() }
+        repository.collections.bundled = { assets.open("colecciones.json").bufferedReader().use { it.readText() } }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =

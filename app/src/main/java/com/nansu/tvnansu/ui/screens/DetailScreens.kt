@@ -393,7 +393,10 @@ fun CategoryGridScreen(kind: Kind, categoryId: String, title: String) {
         }
         when {
             list == null -> LoadingView()
-            list.isEmpty() -> EmptyState("Esta categoría está vacía")
+            list.isEmpty() -> EmptyState(
+                if (categoryId.startsWith(COLLECTION_PREFIX)) "Ninguna película de $title está en tu lista"
+                else "Esta categoría está vacía"
+            )
             else -> PivotScroll(40.dp) {
                 LazyVerticalGrid(
                     state = rememberLazyGridState(),

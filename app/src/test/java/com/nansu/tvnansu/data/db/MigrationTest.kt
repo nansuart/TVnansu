@@ -66,7 +66,7 @@ class MigrationTest {
         }
 
         val room = Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .addCallback(AppDatabase.SEED_PROFILE)
             .allowMainThreadQueries()
             .build()
@@ -85,6 +85,10 @@ class MigrationTest {
                 dao.upsertIntroMarker(IntroMarkerEntity("1:s1", 1_000, 60_000))
                 assertEquals(60_000L, dao.introMarker("1:s1")?.endMs)
                 dao.allNowPlaying(1L, System.currentTimeMillis())
+                dao.upsertSeriesMeta(listOf(SeriesMetaEntity("1:77", 1L, "77", "Netflix", "tvmaze", 1L)))
+                assertEquals(1, dao.classifiedCount(1L))
+                dao.seriesWithPlatform(1L)
+                dao.allMovies(1L)
             }
         } finally {
             room.close()
