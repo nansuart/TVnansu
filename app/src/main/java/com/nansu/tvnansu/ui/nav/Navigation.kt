@@ -9,6 +9,8 @@ sealed class Dest(val key: String) {
     data object Main : Dest("main")
     data class AddPlaylist(val first: Boolean) : Dest("add")
     data object Sync : Dest("sync")
+    data object Profiles : Dest("profiles")
+    data class ProfileEdit(val id: Long?) : Dest("profileEdit:$id")
     data class Movie(val remoteId: String) : Dest("movie:$remoteId")
     data class Series(val remoteId: String) : Dest("series:$remoteId")
     data class Grid(val kind: Kind, val categoryId: String, val title: String) : Dest("grid:${kind.name}:$categoryId")

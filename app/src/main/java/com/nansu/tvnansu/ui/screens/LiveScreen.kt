@@ -85,7 +85,7 @@ fun LiveScreen() {
     LaunchedEffect(categories) {
         val cats = categories ?: return@LaunchedEffect
         if (selected == null) {
-            val favCount = repo.dao.favorites(pid, Kind.LIVE.name).size
+            val favCount = repo.favoritesOf(pid, Kind.LIVE).size
             selected = if (favCount > 0) CAT_FAV else cats.firstOrNull()?.remoteId ?: CAT_ALL
         }
     }
@@ -99,8 +99,8 @@ fun LiveScreen() {
         val sel = selected ?: return@produceState
         value = null
         value = when (sel) {
-            CAT_FAV -> repo.channelsByIds(pid, repo.dao.favorites(pid, Kind.LIVE.name).map { it.remoteId })
-            CAT_RECENT -> repo.channelsByIds(pid, repo.dao.recents(pid, 60).map { it.remoteId })
+            CAT_FAV -> repo.channelsByIds(pid, repo.favoritesOf(pid, Kind.LIVE).map { it.remoteId })
+            CAT_RECENT -> repo.channelsByIds(pid, repo.recentsOf(pid, 60).map { it.remoteId })
             CAT_ALL -> repo.dao.allChannels(pid, 8000)
             else -> repo.dao.channelsIn(pid, sel)
         }

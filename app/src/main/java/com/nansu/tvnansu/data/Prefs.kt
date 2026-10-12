@@ -5,6 +5,15 @@ import android.content.Context
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("tvnansu", Context.MODE_PRIVATE)
 
+    /** Profile whose preferences are read below; set by the repository. */
+    var profileId: Long = 1L
+
+    private fun pk(key: String) = "${key}_p$profileId"
+
+    var activeProfileId: Long
+        get() = sp.getLong("active_profile", 1L)
+        set(v) = sp.edit().putLong("active_profile", v).apply()
+
     var activePlaylistId: Long
         get() = sp.getLong("active_playlist", 0L)
         set(v) = sp.edit().putLong("active_playlist", v).apply()
@@ -15,18 +24,18 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString("live_format", v).apply()
 
     var reduceMotion: Boolean
-        get() = sp.getBoolean("reduce_motion", false)
-        set(v) = sp.edit().putBoolean("reduce_motion", v).apply()
+        get() = sp.getBoolean(pk("reduce_motion"), sp.getBoolean("reduce_motion", false))
+        set(v) = sp.edit().putBoolean(pk("reduce_motion"), v).apply()
 
     /** 0 small, 1 normal, 2 large, 3 extra large. */
     var subtitleSize: Int
-        get() = sp.getInt("subtitle_size", 1)
-        set(v) = sp.edit().putInt("subtitle_size", v).apply()
+        get() = sp.getInt(pk("subtitle_size"), sp.getInt("subtitle_size", 1))
+        set(v) = sp.edit().putInt(pk("subtitle_size"), v).apply()
 
     /** Dark box behind subtitles instead of an outline. */
     var subtitleBackground: Boolean
-        get() = sp.getBoolean("subtitle_background", false)
-        set(v) = sp.edit().putBoolean("subtitle_background", v).apply()
+        get() = sp.getBoolean(pk("subtitle_background"), sp.getBoolean("subtitle_background", false))
+        set(v) = sp.edit().putBoolean(pk("subtitle_background"), v).apply()
 
     /** Hours between automatic refreshes of the playlist. 0 = never. */
     var autoRefreshHours: Int

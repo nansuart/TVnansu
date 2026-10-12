@@ -8,7 +8,9 @@ import com.nansu.tvnansu.data.db.EpisodeEntity
 import com.nansu.tvnansu.data.db.FavoriteEntity
 import com.nansu.tvnansu.data.db.Kind
 import com.nansu.tvnansu.data.db.MovieEntity
+import com.nansu.tvnansu.data.db.IntroMarkerEntity
 import com.nansu.tvnansu.data.db.PlaylistEntity
+import com.nansu.tvnansu.data.db.ProfileEntity
 import com.nansu.tvnansu.data.db.ProgrammeEntity
 import com.nansu.tvnansu.data.db.ProgressEntity
 import com.nansu.tvnansu.data.db.RecentChannelEntity
@@ -51,6 +53,8 @@ class Repository(
     val syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val epgState = MutableStateFlow<SyncState>(SyncState.Idle)
     val activeId = MutableStateFlow(prefs.activePlaylistId)
+    val profileId = MutableStateFlow(prefs.activeProfileId).also { prefs.profileId = it.value }
+    val profiles: Flow<List<ProfileEntity>> = dao.profilesFlow()
 
     /** Bumped after a catalogue sync so screens reload their data. */
     val dataVersion = MutableStateFlow(0)
@@ -646,7 +650,7 @@ class Repository(
         } else c.url
 
     fun channelItem(c: ChannelEntity) = PlayItem(
-        uid = uidOf(c.playlistId, Kind.LIVE, c.remoteId),
+        uid = uid(c.playlistId, Kind.LIVE, c.remoteId),
         kind = Kind.LIVE,
         remoteId = c.remoteId,
         title = c.name,
@@ -657,7 +661,7 @@ class Repository(
     )
 
     fun movieItem(m: MovieEntity) = PlayItem(
-        uid = uidOf(m.playlistId, Kind.MOVIE, m.remoteId),
+        uid = uid(m.playlistId, Kind.MOVIE, m.remoteId),
         kind = Kind.MOVIE,
         remoteId = m.remoteId,
         title = m.name,
@@ -667,7 +671,7 @@ class Repository(
     )
 
     fun episodeItem(s: SeriesEntity, e: EpisodeEntity) = PlayItem(
-        uid = uidOf(e.playlistId, Kind.EPISODE, e.remoteId),
+        uid = uid(e.playlistId, Kind.EPISODE, e.remoteId),
         kind = Kind.EPISODE,
         remoteId = e.remoteId,
         title = cleanEpisodeTitle(e.title, s.name, e.episode),
@@ -692,7 +696,7 @@ class Repository(
                 if (finished) dao.deleteProgress(item.uid)
                 else if (positionMs > 15_000) dao.upsertProgress(
                     ProgressEntity(
-                        uid = item.uid, playlistId = playlistId, kind = Kind.MOVIE.name, remoteId = item.remoteId,
+                        uid = item.uid, profileId = profileId.value, playlistId = playlistId, kind = Kind.MOVIE.name, remoteId = item.remoteId,
                         title = item.title, subtitle = item.subtitle, image = item.image, url = item.url,
                         seriesId = null, positionMs = positionMs, durationMs = durationMs, updatedAt = now,
                     )
@@ -701,14 +705,14 @@ class Repository(
             Kind.EPISODE -> {
                 dao.upsertProgress(
                     ProgressEntity(
-                        uid = item.uid, playlistId = playlistId, kind = Kind.EPISODE.name, remoteId = item.remoteId,
+                        uid = item.uid, profileId = profileId.value, playlistId = playlistId, kind = Kind.EPISODE.name, remoteId = item.remoteId,
                         title = item.title, subtitle = item.subtitle, image = item.image, url = item.url,
                         seriesId = item.seriesId, positionMs = if (finished) durationMs else positionMs,
                         durationMs = durationMs, updatedAt = now,
                     )
                 )
                 val sid = item.seriesId ?: return
-                val seriesUid = uidOf(playlistId, Kind.SERIES, sid)
+                val seriesUid = uid(playlistId, Kind.SERIES, sid)
                 if (finished && !hasNext) {
                     dao.deleteProgress(seriesUid)
                 } else if (!finished && positionMs > 15_000) {
@@ -724,7 +728,7 @@ class Repository(
         val sid = item.seriesId ?: return
         dao.upsertProgress(
             ProgressEntity(
-                uid = uidOf(playlistId, Kind.SERIES, sid), playlistId = playlistId, kind = Kind.SERIES.name,
+                uid = uid(playlistId, Kind.SERIES, sid), profileId = profileId.value, playlistId = playlistId, kind = Kind.SERIES.name,
                 remoteId = sid, title = item.seriesTitle ?: item.title, subtitle = item.subtitle,
                 image = item.seriesImage ?: item.image, url = item.url, seriesId = sid,
                 positionMs = positionMs, durationMs = durationMs, updatedAt = System.currentTimeMillis(),
@@ -732,32 +736,170 @@ class Repository(
         )
     }
 
-    fun continueWatching(pid: Long): Flow<List<ProgressEntity>> = dao.continueFlow(pid, 30)
+    fun continueWatching(pid: Long): Flow<List<ProgressEntity>> = dao.continueFlow(profileId.value, pid, 30)
+
+    suspend fun episodeProgress(pid: Long, seriesId: String): List<ProgressEntity> =
+        dao.episodeProgress(profileId.value, pid, seriesId)
 
     suspend fun removeFromContinue(uid: String) = dao.deleteProgress(uid)
 
     // ------------------------------------------------------------------ favorites & recents
 
-    fun favoriteUids(pid: Long): Flow<List<String>> = dao.favoriteUidsFlow(pid)
+    fun favoriteUids(pid: Long): Flow<List<String>> = dao.favoriteUidsFlow(profileId.value, pid)
 
-    fun favorites(pid: Long): Flow<List<FavoriteEntity>> = dao.favoritesFlow(pid)
+    fun favorites(pid: Long): Flow<List<FavoriteEntity>> = dao.favoritesFlow(profileId.value, pid)
+
+    suspend fun favoritesOf(pid: Long, kind: Kind): List<FavoriteEntity> = dao.favorites(profileId.value, pid, kind.name)
+
+    suspend fun recentsOf(pid: Long, limit: Int): List<RecentChannelEntity> = dao.recents(profileId.value, pid, limit)
 
     suspend fun toggleFavorite(pid: Long, kind: Kind, remoteId: String, title: String, image: String?): Boolean {
-        val uid = uidOf(pid, kind, remoteId)
+        val uid = uid(pid, kind, remoteId)
         return if (dao.isFavorite(uid) > 0) {
             dao.deleteFavorite(uid)
             false
         } else {
-            dao.upsertFavorite(FavoriteEntity(uid, pid, kind.name, remoteId, title, image, System.currentTimeMillis()))
+            dao.upsertFavorite(FavoriteEntity(uid, profileId.value, pid, kind.name, remoteId, title, image, System.currentTimeMillis()))
             true
         }
     }
 
     suspend fun markChannelWatched(pid: Long, remoteId: String) {
-        dao.upsertRecent(RecentChannelEntity(uidOf(pid, Kind.LIVE, remoteId), pid, remoteId, System.currentTimeMillis()))
+        dao.upsertRecent(RecentChannelEntity(uid(pid, Kind.LIVE, remoteId), profileId.value, pid, remoteId, System.currentTimeMillis()))
     }
 
-    fun recentChannels(pid: Long): Flow<List<RecentChannelEntity>> = dao.recentFlow(pid, 20)
+    fun recentChannels(pid: Long): Flow<List<RecentChannelEntity>> = dao.recentFlow(profileId.value, pid, 20)
+
+    // ------------------------------------------------------------------ profiles
+
+    /** Per-profile key for progress, favourites and recents. */
+    fun uid(playlistId: Long, kind: Kind, remoteId: String) = uidOf(profileId.value, playlistId, kind, remoteId)
+
+    suspend fun activeProfile(): ProfileEntity {
+        dao.profile(profileId.value)?.let { return it }
+        val first = dao.profiles().firstOrNull()
+            ?: ProfileEntity(name = "Principal", avatar = 0, createdAt = System.currentTimeMillis())
+                .let { it.copy(id = dao.insertProfile(it)) }
+        setProfile(first.id)
+        return first
+    }
+
+    fun setProfile(id: Long) {
+        prefs.activeProfileId = id
+        prefs.profileId = id
+        profileId.value = id
+        dataVersion.value++
+    }
+
+    suspend fun profileCount(): Int = dao.profiles().size
+
+    suspend fun profile(id: Long): ProfileEntity? = dao.profile(id)
+
+    suspend fun saveProfile(id: Long?, name: String, avatar: Int): Long {
+        val clean = name.trim().ifBlank { "Perfil" }.take(20)
+        return if (id == null) {
+            dao.insertProfile(ProfileEntity(name = clean, avatar = avatar, createdAt = System.currentTimeMillis()))
+        } else {
+            dao.profile(id)?.let { dao.updateProfile(it.copy(name = clean, avatar = avatar)) }
+            id
+        }
+    }
+
+    suspend fun deleteProfile(id: Long) {
+        if (dao.profiles().size <= 1) return
+        dao.clearProfileProgress(id)
+        dao.clearProfileFavorites(id)
+        dao.clearProfileRecents(id)
+        dao.deleteProfile(id)
+        if (profileId.value == id) dao.profiles().firstOrNull()?.let { setProfile(it.id) }
+    }
+
+    // ------------------------------------------------------------------ live now (home)
+
+    /**
+     * Sports and big events airing now (from the guide), event channels from the
+     * provider, then a few news channels. Duplicated broadcasts are shown once.
+     */
+    suspend fun liveNow(pid: Long, limit: Int = 20): List<LiveEvent> = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val programmes = dao.allNowPlaying(pid, now)
+
+        val sports = programmes
+            .map { it to sportScore(it.title) }
+            .filter { it.second >= 2 }
+            .sortedWith(compareByDescending<Pair<ProgrammeEntity, Int>> { it.second }.thenBy { it.first.stop })
+            .map { it.first }
+        val news = programmes.filter { newsRegex.containsMatchIn(it.title) }
+
+        val epgIds = (sports.map { it.channelEpgId } + news.map { it.channelEpgId }).distinct()
+        val byEpg = epgIds.chunked(400)
+            .flatMap { dao.channelsByEpg(pid, it) }
+            .groupBy { it.epgId }
+
+        val out = ArrayList<LiveEvent>()
+        val seenTitles = HashSet<String>()
+        val seenChannels = HashSet<String>()
+        fun add(e: LiveEvent) {
+            val t = e.title.lowercase().replace(Regex("[^a-z0-9áéíóúñü]"), "")
+            if (out.size < limit && seenTitles.add(t) && seenChannels.add(e.channel.remoteId)) out += e
+        }
+
+        sports.forEach { p ->
+            val ch = byEpg[p.channelEpgId]?.firstOrNull() ?: return@forEach
+            add(LiveEvent(ch, p.title, p.start, p.stop, "DEPORTES"))
+        }
+        dao.eventChannels(pid)
+            .filter { eventNameRegex.containsMatchIn(it.name) && !noEventRegex.containsMatchIn(it.name) }
+            .take(8)
+            .forEach { add(LiveEvent(it, it.name, 0, 0, "EVENTO")) }
+
+        val nowByEpg = programmes.associateBy { it.channelEpgId }
+        var newsCount = 0
+        val newsChannels = news.mapNotNull { p -> byEpg[p.channelEpgId]?.firstOrNull()?.let { it to p } } +
+            dao.newsChannels(pid).map { c -> c to c.epgId?.let { nowByEpg[it] } }
+        for ((ch, p) in newsChannels) {
+            if (newsCount >= 6) break
+            val before = out.size
+            add(LiveEvent(ch, p?.title ?: ch.name, p?.start ?: 0, p?.stop ?: 0, "NOTICIAS"))
+            if (out.size > before) newsCount++
+        }
+        out
+    }
+
+    /** Fetches wide backdrops for featured movies that lack one (Xtream only, a few calls). */
+    suspend fun prefetchBackdrops(movies: List<MovieEntity>): Boolean {
+        var changed = false
+        for (m in movies) {
+            if (m.backdrop != null) continue
+            val d = try { movieDetails(m) } catch (_: Exception) { null }
+            if (d?.backdrop != null) changed = true
+        }
+        return changed
+    }
+
+    // ------------------------------------------------------------------ intro markers
+
+    private fun introKey(playlistId: Long, seriesId: String) = "$playlistId:$seriesId"
+
+    suspend fun introMarker(playlistId: Long, seriesId: String): IntroMarkerEntity? =
+        dao.introMarker(introKey(playlistId, seriesId))
+
+    /** Saves the start or the end of the intro; the other edge is kept or defaulted. */
+    suspend fun markIntro(playlistId: Long, seriesId: String, start: Long? = null, end: Long? = null): IntroMarkerEntity {
+        val key = introKey(playlistId, seriesId)
+        val old = dao.introMarker(key)
+        var s = start ?: old?.startMs ?: 0L
+        var e = end ?: old?.endMs ?: 0L
+        if (e in 1..s) {
+            // Marked the start after the old end: start a fresh marker.
+            if (start != null) e = 0L else s = 0L
+        }
+        val m = IntroMarkerEntity(key, s, e)
+        dao.upsertIntroMarker(m)
+        return m
+    }
+
+    suspend fun clearIntro(playlistId: Long, seriesId: String) = dao.deleteIntroMarker(introKey(playlistId, seriesId))
 
     suspend fun channelsByIds(pid: Long, ids: List<String>): List<ChannelEntity> {
         if (ids.isEmpty()) return emptyList()
@@ -805,6 +947,33 @@ class Repository(
     }
 
     companion object {
+        private val sportStrong = Regex(
+            "champions|liga de campeones|uefa|laliga|la liga|liga f\\b|liga endesa|hypermotion|premier league|serie a\\b|" +
+                "bundesliga|ligue 1|copa del rey|supercopa|europa league|conference league|mundial|eurocopa|copa am[eé]rica|" +
+                "libertadores|\\bnba\\b|euroliga|euroleague|\\bacb\\b|\\bnfl\\b|\\bnhl\\b|\\bmlb\\b|f[oó]rmula 1|\\bf1\\b|" +
+                "moto ?gp|roland garros|wimbledon|us open|open de australia|\\batp\\b|\\bwta\\b|\\bufc\\b|boxeo|" +
+                "tour de francia|vuelta a espa[nñ]a|giro de italia|rugby|grand slam",
+            RegexOption.IGNORE_CASE,
+        )
+        private val sportGeneric = Regex("f[uú]tbol|baloncesto|tenis|partido|jornada|carrera|gran premio", RegexOption.IGNORE_CASE)
+        private val liveWord = Regex("\\bdirecto\\b|en vivo|\\blive\\b|\\(d\\)", RegexOption.IGNORE_CASE)
+        private val versus = Regex("\\bvs\\.?\\b| v\\. | - ", RegexOption.IGNORE_CASE)
+        private val replay = Regex("resumen|highlights|repetici[oó]n|reemisi[oó]n|\\(r\\)|previa|post ?partido|magazine|programa", RegexOption.IGNORE_CASE)
+        private val newsRegex = Regex("telediario|informativo|noticias|noticiero|\\bnews\\b|24 ?horas", RegexOption.IGNORE_CASE)
+        private val eventNameRegex = Regex("\\bvs\\.?\\b| v\\. | - |:\\s*\\S", RegexOption.IGNORE_CASE)
+        private val noEventRegex = Regex("no event|sin evento|no hay evento|off ?air|coming soon", RegexOption.IGNORE_CASE)
+
+        fun sportScore(title: String): Int {
+            var score = 0
+            if (sportStrong.containsMatchIn(title)) score += 2
+            else if (sportGeneric.containsMatchIn(title)) score += 1
+            if (score == 0) return 0
+            if (liveWord.containsMatchIn(title)) score += 2
+            if (versus.containsMatchIn(title)) score += 1
+            if (replay.containsMatchIn(title)) score -= 3
+            return score
+        }
+
         fun stableId(s: String): String =
             s.hashCode().toUInt().toString(36) + s.length.toString(36)
 

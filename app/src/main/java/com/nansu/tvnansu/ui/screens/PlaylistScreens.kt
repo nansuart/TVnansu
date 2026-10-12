@@ -290,6 +290,21 @@ fun SettingsScreen() {
             .padding(top = 84.dp, start = 48.dp, end = 48.dp)
             .verticalScroll(rememberScrollState())
     ) {
+        Text("Perfil", style = Type.Title, color = Palette.Text)
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton("Cambiar de perfil", onClick = { nav.push(Dest.Profiles) })
+            PillButton("Editar este perfil", onClick = { nav.push(Dest.ProfileEdit(repo.profileId.value)) })
+            PillButton("Añadir perfil", leading = "+", onClick = { nav.push(Dest.ProfileEdit(null)) })
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Cada perfil guarda su Seguir viendo, Mi lista, canales recientes, subtítulos y animaciones.",
+            style = Type.Caption,
+            color = Palette.TextFaint,
+        )
+
+        Spacer(Modifier.height(32.dp))
         Text("Listas", style = Type.Title, color = Palette.Text)
         Spacer(Modifier.height(12.dp))
         playlists.forEach { p ->

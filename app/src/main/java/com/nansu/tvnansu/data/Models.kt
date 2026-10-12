@@ -59,6 +59,16 @@ data class NowNext(
     val nextStart: Long,
 )
 
+/** Something airing right now that deserves a place on Home. */
+data class LiveEvent(
+    val channel: com.nansu.tvnansu.data.db.ChannelEntity,
+    val title: String,
+    val start: Long,
+    val stop: Long,
+    /** "DEPORTES", "EVENTO" or "NOTICIAS". */
+    val label: String,
+)
+
 sealed interface SyncState {
     data object Idle : SyncState
     data class Running(val message: String) : SyncState

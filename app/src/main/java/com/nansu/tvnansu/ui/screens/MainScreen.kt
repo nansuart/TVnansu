@@ -39,6 +39,15 @@ import com.nansu.tvnansu.data.SyncState
 import com.nansu.tvnansu.ui.Fmt
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.components.LogoCompact
+import com.nansu.tvnansu.ui.components.ProfileAvatar
+import com.nansu.tvnansu.ui.nav.Dest
+import com.nansu.tvnansu.ui.nav.LocalNavigator
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Surface
 import com.nansu.tvnansu.ui.components.Spinner
 import com.nansu.tvnansu.ui.components.TabPill
 import com.nansu.tvnansu.ui.theme.Palette
@@ -187,5 +196,32 @@ private fun StatusArea() {
             Spacer(Modifier.width(18.dp))
         }
         Text(Fmt.clock(now), style = Type.Section, color = Palette.Text)
+        Spacer(Modifier.width(18.dp))
+        ProfileChip()
+    }
+}
+
+/** Current profile in the top bar; OK opens the profile picker. */
+@Composable
+private fun ProfileChip() {
+    val repo = LocalRepository.current
+    val nav = LocalNavigator.current
+    val profileId by repo.profileId.collectAsState()
+    val profiles by repo.profiles.collectAsState(initial = emptyList())
+    val p = profiles.firstOrNull { it.id == profileId } ?: return
+    Surface(
+        onClick = { nav.push(Dest.Profiles) },
+        modifier = Modifier.size(34.dp),
+        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(9.dp)),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.15f),
+        border = ClickableSurfaceDefaults.border(
+            focusedBorder = Border(BorderStroke(2.dp, Palette.Focus), shape = RoundedCornerShape(9.dp)),
+        ),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
+        ),
+    ) {
+        ProfileAvatar(p.name, p.avatar, 34.dp)
     }
 }

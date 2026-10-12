@@ -1,5 +1,6 @@
 package com.nansu.tvnansu.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -11,7 +12,27 @@ object SourceType {
     const val M3U = "M3U"
 }
 
-fun uidOf(playlistId: Long, kind: Kind, remoteId: String) = "$playlistId:${kind.name}:$remoteId"
+/** Key for per-profile rows (progress, favourites, recents). */
+fun uidOf(profileId: Long, playlistId: Long, kind: Kind, remoteId: String) =
+    "$profileId|$playlistId:${kind.name}:$remoteId"
+
+@Entity(tableName = "profile")
+data class ProfileEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** Index into the avatar palette (see ProfileAvatar). */
+    val avatar: Int,
+    val createdAt: Long,
+)
+
+/** Where the opening titles of a series start and end, learned from the user. */
+@Entity(tableName = "intro_marker")
+data class IntroMarkerEntity(
+    /** "playlistId:seriesId" */
+    @PrimaryKey val seriesKey: String,
+    val startMs: Long,
+    val endMs: Long,
+)
 
 @Entity(tableName = "playlist")
 data class PlaylistEntity(
@@ -126,7 +147,10 @@ data class EpisodeEntity(
 
 @Entity(
     tableName = "programme",
-    indices = [Index(value = ["playlistId", "channelEpgId", "start"])]
+    indices = [
+        Index(value = ["playlistId", "channelEpgId", "start"]),
+        Index(value = ["playlistId", "start"]),
+    ]
 )
 data class ProgrammeEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -141,6 +165,7 @@ data class ProgrammeEntity(
 @Entity(tableName = "progress")
 data class ProgressEntity(
     @PrimaryKey val uid: String,
+    @ColumnInfo(defaultValue = "1") val profileId: Long,
     val playlistId: Long,
     val kind: String,
     val remoteId: String,
@@ -157,6 +182,7 @@ data class ProgressEntity(
 @Entity(tableName = "favorite")
 data class FavoriteEntity(
     @PrimaryKey val uid: String,
+    @ColumnInfo(defaultValue = "1") val profileId: Long,
     val playlistId: Long,
     val kind: String,
     val remoteId: String,
@@ -168,6 +194,7 @@ data class FavoriteEntity(
 @Entity(tableName = "recent_channel")
 data class RecentChannelEntity(
     @PrimaryKey val uid: String,
+    @ColumnInfo(defaultValue = "1") val profileId: Long,
     val playlistId: Long,
     val remoteId: String,
     val watchedAt: Long,

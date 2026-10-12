@@ -43,7 +43,6 @@ import com.nansu.tvnansu.data.db.Kind
 import com.nansu.tvnansu.data.db.MovieEntity
 import com.nansu.tvnansu.data.db.ProgressEntity
 import com.nansu.tvnansu.data.db.SeriesEntity
-import com.nansu.tvnansu.data.db.uidOf
 import com.nansu.tvnansu.ui.Fmt
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.PivotScroll
@@ -75,7 +74,7 @@ fun MovieDetailScreen(remoteId: String) {
     }
     val favUids by remember(pid) { repo.favoriteUids(pid) }.collectAsState(initial = emptyList())
     val progress by produceState<ProgressEntity?>(null, pid, remoteId) {
-        value = repo.progress(uidOf(pid, Kind.MOVIE, remoteId))
+        value = repo.progress(repo.uid(pid, Kind.MOVIE, remoteId))
     }
     val playRequester = remember { FocusRequester() }
     val memory = rememberFocusMemory()
@@ -86,7 +85,7 @@ fun MovieDetailScreen(remoteId: String) {
         return
     }
     val d = details
-    val isFav = uidOf(pid, Kind.MOVIE, remoteId) in favUids
+    val isFav = repo.uid(pid, Kind.MOVIE, remoteId) in favUids
     val backdrop = d?.backdrop ?: m.backdrop
 
     LaunchedEffect(Unit) {
@@ -187,10 +186,10 @@ fun SeriesDetailScreen(remoteId: String) {
     val favUids by remember(pid) { repo.favoriteUids(pid) }.collectAsState(initial = emptyList())
     // Reloaded every time the screen is shown so progress bars are current.
     val episodeProgress by produceState(emptyMap<String, ProgressEntity>(), pid, remoteId) {
-        value = repo.dao.episodeProgress(pid, remoteId).associateBy { it.remoteId }
+        value = repo.episodeProgress(pid, remoteId).associateBy { it.remoteId }
     }
     val resume by produceState<ProgressEntity?>(null, pid, remoteId) {
-        value = repo.progress(uidOf(pid, Kind.SERIES, remoteId))
+        value = repo.progress(repo.uid(pid, Kind.SERIES, remoteId))
     }
     var seasonIndex by rememberSaveable { mutableIntStateOf(-1) }
     val playRequester = remember { FocusRequester() }
@@ -202,7 +201,7 @@ fun SeriesDetailScreen(remoteId: String) {
         return
     }
     val d = details
-    val isFav = uidOf(pid, Kind.SERIES, remoteId) in favUids
+    val isFav = repo.uid(pid, Kind.SERIES, remoteId) in favUids
     val seasons = d?.seasons.orEmpty()
     val allEpisodes = remember(seasons) { seasons.flatMap { it.episodes } }
 

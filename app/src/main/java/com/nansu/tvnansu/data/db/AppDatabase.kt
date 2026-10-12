@@ -7,6 +7,8 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Database(
@@ -21,12 +23,40 @@ import kotlinx.coroutines.flow.Flow
         ProgressEntity::class,
         FavoriteEntity::class,
         RecentChannelEntity::class,
+        ProfileEntity::class,
+        IntroMarkerEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun dao(): AppDao
+
+    companion object {
+        /**
+         * v1 → v2: profiles and intro markers. Existing progress, favourites and
+         * recents move to the default profile (id 1); playlists are untouched.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `profile` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `avatar` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)")
+                db.execSQL("INSERT OR IGNORE INTO `profile` (`id`, `name`, `avatar`, `createdAt`) VALUES (1, 'Principal', 0, ${System.currentTimeMillis()})")
+                for (table in listOf("progress", "favorite", "recent_channel")) {
+                    db.execSQL("ALTER TABLE `$table` ADD COLUMN `profileId` INTEGER NOT NULL DEFAULT 1")
+                    db.execSQL("UPDATE `$table` SET `uid` = '1|' || `uid`")
+                }
+                db.execSQL("CREATE TABLE IF NOT EXISTS `intro_marker` (`seriesKey` TEXT NOT NULL, `startMs` INTEGER NOT NULL, `endMs` INTEGER NOT NULL, PRIMARY KEY(`seriesKey`))")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_programme_playlistId_start` ON `programme` (`playlistId`, `start`)")
+            }
+        }
+
+        /** Fresh installs start with one profile. */
+        val SEED_PROFILE = object : RoomDatabase.Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL("INSERT OR IGNORE INTO `profile` (`id`, `name`, `avatar`, `createdAt`) VALUES (1, 'Principal', 0, ${System.currentTimeMillis()})")
+            }
+        }
+    }
 }
 
 @Dao
@@ -185,11 +215,11 @@ interface AppDao {
     @Query("SELECT * FROM progress WHERE uid = :uid")
     suspend fun progress(uid: String): ProgressEntity?
 
-    @Query("SELECT * FROM progress WHERE playlistId = :pid AND kind IN ('MOVIE', 'SERIES') ORDER BY updatedAt DESC LIMIT :limit")
-    fun continueFlow(pid: Long, limit: Int): Flow<List<ProgressEntity>>
+    @Query("SELECT * FROM progress WHERE profileId = :prof AND playlistId = :pid AND kind IN ('MOVIE', 'SERIES') ORDER BY updatedAt DESC LIMIT :limit")
+    fun continueFlow(prof: Long, pid: Long, limit: Int): Flow<List<ProgressEntity>>
 
-    @Query("SELECT * FROM progress WHERE playlistId = :pid AND kind = 'EPISODE' AND seriesId = :sid")
-    suspend fun episodeProgress(pid: Long, sid: String): List<ProgressEntity>
+    @Query("SELECT * FROM progress WHERE profileId = :prof AND playlistId = :pid AND kind = 'EPISODE' AND seriesId = :sid")
+    suspend fun episodeProgress(prof: Long, pid: Long, sid: String): List<ProgressEntity>
 
     @Query("DELETE FROM progress WHERE uid = :uid")
     suspend fun deleteProgress(uid: String)
@@ -201,14 +231,14 @@ interface AppDao {
     @Query("DELETE FROM favorite WHERE uid = :uid")
     suspend fun deleteFavorite(uid: String)
 
-    @Query("SELECT * FROM favorite WHERE playlistId = :pid ORDER BY addedAt DESC")
-    fun favoritesFlow(pid: Long): Flow<List<FavoriteEntity>>
+    @Query("SELECT * FROM favorite WHERE profileId = :prof AND playlistId = :pid ORDER BY addedAt DESC")
+    fun favoritesFlow(prof: Long, pid: Long): Flow<List<FavoriteEntity>>
 
-    @Query("SELECT * FROM favorite WHERE playlistId = :pid AND kind = :kind ORDER BY addedAt DESC")
-    suspend fun favorites(pid: Long, kind: String): List<FavoriteEntity>
+    @Query("SELECT * FROM favorite WHERE profileId = :prof AND playlistId = :pid AND kind = :kind ORDER BY addedAt DESC")
+    suspend fun favorites(prof: Long, pid: Long, kind: String): List<FavoriteEntity>
 
-    @Query("SELECT uid FROM favorite WHERE playlistId = :pid")
-    fun favoriteUidsFlow(pid: Long): Flow<List<String>>
+    @Query("SELECT uid FROM favorite WHERE profileId = :prof AND playlistId = :pid")
+    fun favoriteUidsFlow(prof: Long, pid: Long): Flow<List<String>>
 
     @Query("SELECT COUNT(*) FROM favorite WHERE uid = :uid")
     suspend fun isFavorite(uid: String): Int
@@ -217,9 +247,60 @@ interface AppDao {
     @Upsert
     suspend fun upsertRecent(r: RecentChannelEntity)
 
-    @Query("SELECT * FROM recent_channel WHERE playlistId = :pid ORDER BY watchedAt DESC LIMIT :limit")
-    fun recentFlow(pid: Long, limit: Int): Flow<List<RecentChannelEntity>>
+    @Query("SELECT * FROM recent_channel WHERE profileId = :prof AND playlistId = :pid ORDER BY watchedAt DESC LIMIT :limit")
+    fun recentFlow(prof: Long, pid: Long, limit: Int): Flow<List<RecentChannelEntity>>
 
-    @Query("SELECT * FROM recent_channel WHERE playlistId = :pid ORDER BY watchedAt DESC LIMIT :limit")
-    suspend fun recents(pid: Long, limit: Int): List<RecentChannelEntity>
+    @Query("SELECT * FROM recent_channel WHERE profileId = :prof AND playlistId = :pid ORDER BY watchedAt DESC LIMIT :limit")
+    suspend fun recents(prof: Long, pid: Long, limit: Int): List<RecentChannelEntity>
+
+    // ---- Profiles ----
+    @Query("SELECT * FROM profile ORDER BY id")
+    fun profilesFlow(): Flow<List<ProfileEntity>>
+
+    @Query("SELECT * FROM profile ORDER BY id")
+    suspend fun profiles(): List<ProfileEntity>
+
+    @Query("SELECT * FROM profile WHERE id = :id")
+    suspend fun profile(id: Long): ProfileEntity?
+
+    @Insert
+    suspend fun insertProfile(p: ProfileEntity): Long
+
+    @Update
+    suspend fun updateProfile(p: ProfileEntity)
+
+    @Query("DELETE FROM profile WHERE id = :id")
+    suspend fun deleteProfile(id: Long)
+
+    @Query("DELETE FROM progress WHERE profileId = :prof")
+    suspend fun clearProfileProgress(prof: Long)
+
+    @Query("DELETE FROM favorite WHERE profileId = :prof")
+    suspend fun clearProfileFavorites(prof: Long)
+
+    @Query("DELETE FROM recent_channel WHERE profileId = :prof")
+    suspend fun clearProfileRecents(prof: Long)
+
+    // ---- Intro markers ----
+    @Query("SELECT * FROM intro_marker WHERE seriesKey = :key")
+    suspend fun introMarker(key: String): IntroMarkerEntity?
+
+    @Upsert
+    suspend fun upsertIntroMarker(m: IntroMarkerEntity)
+
+    @Query("DELETE FROM intro_marker WHERE seriesKey = :key")
+    suspend fun deleteIntroMarker(key: String)
+
+    // ---- Live now (home) ----
+    @Query("SELECT * FROM programme WHERE playlistId = :pid AND start <= :now AND stop > :now")
+    suspend fun allNowPlaying(pid: Long, now: Long): List<ProgrammeEntity>
+
+    @Query("SELECT * FROM channel WHERE playlistId = :pid AND epgId IN (:epgIds) ORDER BY number, id")
+    suspend fun channelsByEpg(pid: Long, epgIds: List<String>): List<ChannelEntity>
+
+    @Query("SELECT c.* FROM channel c JOIN category k ON k.playlistId = c.playlistId AND k.kind = 'LIVE' AND k.remoteId = c.categoryId WHERE c.playlistId = :pid AND (lower(k.name) LIKE '%evento%' OR lower(k.name) LIKE '%event%' OR lower(k.name) LIKE '%ppv%') ORDER BY c.number, c.id LIMIT 200")
+    suspend fun eventChannels(pid: Long): List<ChannelEntity>
+
+    @Query("SELECT c.* FROM channel c JOIN category k ON k.playlistId = c.playlistId AND k.kind = 'LIVE' AND k.remoteId = c.categoryId WHERE c.playlistId = :pid AND (lower(k.name) LIKE '%noticia%' OR lower(k.name) LIKE '%news%' OR lower(c.name) LIKE '%noticia%' OR lower(c.name) LIKE '%news%' OR lower(c.name) LIKE '%24h%' OR lower(c.name) LIKE '%24 h%') ORDER BY c.number, c.id LIMIT 60")
+    suspend fun newsChannels(pid: Long): List<ChannelEntity>
 }

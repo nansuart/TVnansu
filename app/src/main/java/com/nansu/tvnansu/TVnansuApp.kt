@@ -29,6 +29,8 @@ class TVnansuApp : Application(), SingletonImageLoader.Factory {
             .retryOnConnectionFailure(true)
             .build()
         val db = Room.databaseBuilder(this, AppDatabase::class.java, "tvnansu.db")
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addCallback(AppDatabase.SEED_PROFILE)
             .fallbackToDestructiveMigration(true)
             .build()
         repository = Repository(db, http, Prefs(this))

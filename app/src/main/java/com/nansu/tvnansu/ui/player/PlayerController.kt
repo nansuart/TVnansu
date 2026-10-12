@@ -187,7 +187,7 @@ class PlayerController(
         when (it.kind) {
             Kind.LIVE -> repo.scope.launch { repo.markChannelWatched(playlistId, it.remoteId) }
             Kind.EPISODE -> repo.scope.launch {
-                val existing = repo.progress(com.nansu.tvnansu.data.db.uidOf(playlistId, Kind.SERIES, it.seriesId ?: ""))
+                val existing = repo.progress(repo.uid(playlistId, Kind.SERIES, it.seriesId ?: ""))
                 if (existing == null || existing.url != it.url) repo.markSeriesResume(it, playlistId, 1, 0)
             }
             else -> Unit
@@ -267,6 +267,13 @@ class PlayerController(
     }
 
     fun play() = player.play()
+
+    fun seekTo(ms: Long) {
+        scrubTarget = null
+        player.seekTo(ms.coerceAtLeast(0))
+    }
+
+    val playlistIdForMarkers: Long get() = playlistId
     fun pause() = player.pause()
 
     /** Accumulates seek steps and applies them after a short pause, like a scrub bar. */

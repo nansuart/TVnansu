@@ -22,6 +22,8 @@ import com.nansu.tvnansu.ui.screens.AddPlaylistScreen
 import com.nansu.tvnansu.ui.screens.CategoryGridScreen
 import com.nansu.tvnansu.ui.screens.MainScreen
 import com.nansu.tvnansu.ui.screens.MovieDetailScreen
+import com.nansu.tvnansu.ui.screens.ProfileEditScreen
+import com.nansu.tvnansu.ui.screens.ProfilePickerScreen
 import com.nansu.tvnansu.ui.screens.SeriesDetailScreen
 import com.nansu.tvnansu.ui.screens.SyncScreen
 import com.nansu.tvnansu.ui.theme.Palette
@@ -34,9 +36,11 @@ fun AppRoot() {
 
     LaunchedEffect(Unit) {
         val active = repo.active()
+        repo.activeProfile()
         start = when {
             active == null -> Dest.AddPlaylist(first = true)
             active.lastSync == 0L -> Dest.Sync
+            repo.profileCount() > 1 -> Dest.Profiles
             else -> Dest.Main
         }
         if (active != null && active.lastSync != 0L) repo.refreshIfStale()
@@ -68,6 +72,8 @@ fun AppRoot() {
                     Dest.Main -> MainScreen()
                     is Dest.AddPlaylist -> AddPlaylistScreen(first = current.first)
                     Dest.Sync -> SyncScreen()
+                    Dest.Profiles -> ProfilePickerScreen()
+                    is Dest.ProfileEdit -> ProfileEditScreen(current.id)
                     is Dest.Movie -> MovieDetailScreen(current.remoteId)
                     is Dest.Series -> SeriesDetailScreen(current.remoteId)
                     is Dest.Grid -> CategoryGridScreen(current.kind, current.categoryId, current.title)

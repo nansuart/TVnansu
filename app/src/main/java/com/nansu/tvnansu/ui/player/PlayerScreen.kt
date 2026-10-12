@@ -70,9 +70,12 @@ import com.nansu.tvnansu.data.NowNext
 import com.nansu.tvnansu.data.PlayItem
 import com.nansu.tvnansu.data.PlayRequest
 import com.nansu.tvnansu.data.db.ChannelEntity
+import com.nansu.tvnansu.data.db.IntroMarkerEntity
 import com.nansu.tvnansu.data.db.Kind
 import com.nansu.tvnansu.ui.Fmt
 import com.nansu.tvnansu.ui.LocalRepository
+import com.nansu.tvnansu.ui.toast
+import kotlinx.coroutines.launch
 import com.nansu.tvnansu.ui.PivotScroll
 import com.nansu.tvnansu.ui.components.LiveDot
 import com.nansu.tvnansu.ui.components.PillButton
@@ -120,6 +123,16 @@ fun PlayerScreen(request: PlayRequest) {
     var subtitleSize by remember { mutableIntStateOf(repo.prefs.subtitleSize) }
     var subtitleBackground by remember { mutableStateOf(repo.prefs.subtitleBackground) }
     var nextUpDismissedFor by remember { mutableIntStateOf(-1) }
+    val skipFocus = remember { FocusRequester() }
+    var skipDismissedFor by remember { mutableIntStateOf(-1) }
+    var introVersion by remember { mutableIntStateOf(0) }
+    val markerScope = rememberCoroutineScope()
+
+    // Intro learned for this series (marked once by the user, reused in every episode).
+    val introMarker by produceState<IntroMarkerEntity?>(null, controller.index, introVersion) {
+        val sid = item.seriesId
+        value = if (item.kind == Kind.EPISODE && sid != null) repo.introMarker(controller.playlistIdForMarkers, sid) else null
+    }
 
     // "Next episode" card during the last 30 seconds of an episode.
     val nextItem = if (item.kind == Kind.EPISODE) controller.items.getOrNull(controller.index + 1) else null
@@ -130,6 +143,16 @@ fun PlayerScreen(request: PlayRequest) {
         nextUpDismissedFor != controller.index &&
         panel == null &&
         controller.error == null
+
+    val marker = introMarker
+    val showSkipIntro = marker != null &&
+        marker.endMs > marker.startMs &&
+        controller.position >= marker.startMs &&
+        controller.position < marker.endMs - 2_000 &&
+        skipDismissedFor != controller.index &&
+        panel == null &&
+        controller.error == null &&
+        !showNextUp
 
     fun poke() {
         overlay = true
@@ -159,10 +182,16 @@ fun PlayerScreen(request: PlayRequest) {
         }
     }
 
-    LaunchedEffect(panel, showNextUp) {
+    LaunchedEffect(panel, showNextUp, showSkipIntro) {
         if (panel == null) {
             delay(50)
-            runCatching { if (showNextUp) nextUpFocus.requestFocus() else rootFocus.requestFocus() }
+            runCatching {
+                when {
+                    showNextUp -> nextUpFocus.requestFocus()
+                    showSkipIntro -> skipFocus.requestFocus()
+                    else -> rootFocus.requestFocus()
+                }
+            }
         }
     }
 
@@ -183,6 +212,7 @@ fun PlayerScreen(request: PlayRequest) {
         when {
             panel != null -> panel = null
             showNextUp -> nextUpDismissedFor = controller.index
+            showSkipIntro -> skipDismissedFor = controller.index
             digits.isNotEmpty() -> digits = ""
             else -> nav.pop()
         }
@@ -195,7 +225,7 @@ fun PlayerScreen(request: PlayRequest) {
             .focusRequester(rootFocus)
             .onKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown || panel != null) return@onKeyEvent false
-                if (showNextUp && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
+                if ((showNextUp || showSkipIntro) && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
                     return@onKeyEvent false
                 }
                 val repeat = ev.nativeKeyEvent.repeatCount
@@ -317,6 +347,26 @@ fun PlayerScreen(request: PlayRequest) {
         }
 
         AnimatedVisibility(
+            visible = showSkipIntro,
+            enter = fadeIn() + slideInHorizontally { it / 3 },
+            exit = fadeOut() + slideOutHorizontally { it / 3 },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 56.dp, bottom = if (overlay) 236.dp else 56.dp),
+        ) {
+            PillButton(
+                text = "Saltar intro",
+                leading = "»",
+                primary = true,
+                onClick = {
+                    marker?.let { controller.seekTo(it.endMs) }
+                    skipDismissedFor = controller.index
+                },
+                modifier = Modifier.focusRequester(skipFocus),
+            )
+        }
+
+        AnimatedVisibility(
             visible = showNextUp,
             enter = fadeIn() + slideInHorizontally { it / 3 },
             exit = fadeOut() + slideOutHorizontally { it / 3 },
@@ -353,6 +403,37 @@ fun PlayerScreen(request: PlayRequest) {
         ) {
             TracksPanel(
                 controller = controller,
+                isEpisode = item.kind == Kind.EPISODE && item.seriesId != null,
+                marker = marker,
+                onMarkIntro = { isStart ->
+                    val sid = item.seriesId
+                    if (sid != null) {
+                        val pos = controller.position
+                        markerScope.launch {
+                            if (isStart) repo.markIntro(controller.playlistIdForMarkers, sid, start = pos)
+                            else repo.markIntro(controller.playlistIdForMarkers, sid, end = pos)
+                            introVersion++
+                            context.toast(
+                                if (isStart) "Inicio de la intro guardado en ${Fmt.duration(pos)}"
+                                else "Final de la intro guardado en ${Fmt.duration(pos)}. Se ofrecerá saltarla en esta serie."
+                            )
+                        }
+                        if (!isStart) {
+                            skipDismissedFor = controller.index
+                            panel = null
+                        }
+                    }
+                },
+                onClearIntro = {
+                    val sid = item.seriesId
+                    if (sid != null) {
+                        markerScope.launch {
+                            repo.clearIntro(controller.playlistIdForMarkers, sid)
+                            introVersion++
+                            context.toast("Intro borrada para esta serie")
+                        }
+                    }
+                },
                 subtitleSize = subtitleSize,
                 subtitleBackground = subtitleBackground,
                 onSubtitleSize = {
@@ -429,7 +510,7 @@ private fun VodControls(controller: PlayerController) {
                 Text(Fmt.duration(pos), style = Type.Label, color = if (controller.scrubTarget != null) Palette.Accent else Palette.Text)
                 Spacer(Modifier.weight(1f))
                 Text(
-                    "◀ ▶ avanzar   ·   OK pausa   ·   ▲ audio y subtítulos",
+                    "◀ ▶ avanzar   ·   OK pausa   ·   ▲ audio, subtítulos e intro",
                     style = Type.Caption,
                     color = Palette.TextFaint,
                 )
@@ -682,6 +763,10 @@ private fun NextUpCard(
 @Composable
 private fun TracksPanel(
     controller: PlayerController,
+    isEpisode: Boolean,
+    marker: IntroMarkerEntity?,
+    onMarkIntro: (isStart: Boolean) -> Unit,
+    onClearIntro: () -> Unit,
     subtitleSize: Int,
     subtitleBackground: Boolean,
     onSubtitleSize: (Int) -> Unit,
@@ -703,6 +788,34 @@ private fun TracksPanel(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 36.dp)
     ) {
+        if (isEpisode) {
+            Text("Intro de la serie", style = Type.Title, color = Palette.Text)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (marker != null && marker.endMs > marker.startMs)
+                    "Guardada: ${Fmt.duration(marker.startMs)} – ${Fmt.duration(marker.endMs)}. Aparece \"Saltar intro\" en cada episodio."
+                else
+                    "Marca dónde empieza y acaba la intro una vez; después podrás saltarla en todos los episodios.",
+                style = Type.Caption,
+                color = Palette.TextDim,
+            )
+            Spacer(Modifier.height(8.dp))
+            OptionRow(
+                label = "Empieza aquí  (${Fmt.duration(controller.position)})",
+                selected = false,
+                onClick = { onMarkIntro(true) },
+                modifier = Modifier.focusRequester(firstRequester),
+            )
+            OptionRow(
+                label = "Termina aquí  (${Fmt.duration(controller.position)})",
+                selected = false,
+                onClick = { onMarkIntro(false) },
+            )
+            if (marker != null) {
+                OptionRow(label = "Borrar intro guardada", selected = false, onClick = onClearIntro)
+            }
+            Spacer(Modifier.height(24.dp))
+        }
         Text("Audio", style = Type.Title, color = Palette.Text)
         Spacer(Modifier.height(10.dp))
         if (audio.isEmpty()) {
@@ -716,7 +829,7 @@ private fun TracksPanel(
                     controller.select(C.TRACK_TYPE_AUDIO, opt)
                     onDone()
                 },
-                modifier = if (i == 0) Modifier.focusRequester(firstRequester) else Modifier,
+                modifier = if (i == 0 && !isEpisode) Modifier.focusRequester(firstRequester) else Modifier,
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -730,7 +843,7 @@ private fun TracksPanel(
                     controller.select(C.TRACK_TYPE_TEXT, opt)
                     onDone()
                 },
-                modifier = if (audio.isEmpty() && i == 0) Modifier.focusRequester(firstRequester) else Modifier,
+                modifier = if (audio.isEmpty() && i == 0 && !isEpisode) Modifier.focusRequester(firstRequester) else Modifier,
             )
         }
         Spacer(Modifier.height(24.dp))

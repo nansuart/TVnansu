@@ -20,13 +20,15 @@ El archivo se sigue llamando `TVnansu.apk` para que la dirección de Downloader 
 
 ## Qué incluye
 
-- Inicio con *Seguir viendo*, canales recientes, Mi lista y novedades.
+- Inicio con carrusel de destacados, *Seguir viendo*, **En directo ahora** (deportes, eventos y noticias según la guía), canales recientes, Mi lista y novedades.
+- **Perfiles** con avatar de color: cada uno guarda su Seguir viendo, Mi lista, recientes, subtítulos y animaciones.
 - **En vivo**: categorías, lista de canales con lo que se emite ahora y ficha con la guía.
 - **Películas** y **Series** en filas por categoría, con fondo grande que cambia al moverte.
 - Fichas de película y de serie (temporadas, episodios, progreso de cada episodio).
 - Buscador con teclado en pantalla.
 - Reproductor con zapping, lista de canales, números de canal, audio y subtítulos (con tamaño ajustable), avance rápido y reanudación.
 - Aviso de *Siguiente episodio* en los últimos 30 segundos de cada capítulo.
+- **Saltar intro**: marca una vez dónde empieza y acaba la intro de una serie (flecha arriba durante el episodio) y en los siguientes episodios aparece el botón.
 - Mantén pulsado OK sobre cualquier canal, película o serie para añadirlo a Mi lista o a favoritos.
 
 ## Controles del reproductor
