@@ -263,8 +263,9 @@ fun ProfileEditScreen(profileId: Long?) {
                                 confirmDelete = true
                             } else {
                                 scope.launch {
+                                    val wasActive = repo.profileId.value == profileId
                                     repo.deleteProfile(profileId)
-                                    nav.pop()
+                                    if (wasActive) nav.resetTo(Dest.Profiles) else nav.pop()
                                 }
                             }
                         },
