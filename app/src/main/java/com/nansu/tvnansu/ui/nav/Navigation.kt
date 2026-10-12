@@ -18,13 +18,23 @@ sealed class Dest(val key: String) {
 class Navigator(start: Dest) {
     val stack = mutableStateListOf(start)
 
+    /**
+     * True right after going back. Screens only move focus to the last focused
+     * item in that moment, never when switching tabs.
+     */
+    var restorePending: Boolean = false
+
     val current: Dest get() = stack.last()
 
     fun push(dest: Dest) {
         stack.add(dest)
     }
 
-    fun pop(): Dest? = if (stack.size > 1) stack.removeAt(stack.lastIndex) else null
+    fun pop(): Dest? {
+        if (stack.size <= 1) return null
+        restorePending = true
+        return stack.removeAt(stack.lastIndex)
+    }
 
     fun resetTo(dest: Dest) {
         stack.clear()

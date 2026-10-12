@@ -39,37 +39,68 @@ import com.nansu.tvnansu.ui.theme.Type
 
 val CardShape = RoundedCornerShape(10.dp)
 
-/** Image with a typographic fallback underneath, shown while loading or when the URL fails. */
+/**
+ * Artwork on a soft gradient. The title is shown only while there is no image
+ * (missing or failed URL), so transparent logos never sit on top of text.
+ */
 @Composable
 fun ArtImage(
     url: String?,
     title: String,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    imagePadding: Dp = 0.dp,
     fallbackColors: List<Color> = listOf(Palette.Surface2, Palette.Surface),
 ) {
+    var loaded by remember(url) { mutableStateOf(false) }
     Box(modifier.background(Brush.verticalGradient(fallbackColors))) {
-        Text(
-            text = title,
-            style = Type.Label,
-            color = Palette.TextDim,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(10.dp),
-        )
+        if (!loaded) {
+            Text(
+                text = title,
+                style = Type.Label,
+                color = Palette.TextDim,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(10.dp),
+            )
+        }
         if (!url.isNullOrBlank()) {
             AsyncImage(
                 model = url,
                 contentDescription = null,
                 contentScale = contentScale,
-                modifier = Modifier.fillMaxSize(),
+                onSuccess = { loaded = true },
+                onError = { loaded = false },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(imagePadding),
             )
         }
     }
 }
+
+/** "★ 7,4" chip. Hidden when the provider sends no rating. */
+@Composable
+fun RatingChip(rating: Float, modifier: Modifier = Modifier) {
+    if (rating <= 0f) return
+    Text(
+        text = "★ " + String.format("%.1f", rating),
+        style = Type.Caption,
+        color = Color.White,
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.Black.copy(alpha = 0.66f))
+            .padding(horizontal = 7.dp, vertical = 2.dp),
+    )
+}
+
+private val trailingYear = Regex("""\s*[\(\[]\s*(19|20)\d{2}\s*[\)\]]\s*$""")
+
+/** Removes a trailing "(2026)" from provider titles; the year is shown separately. */
+fun cleanTitle(name: String): String = trailingYear.replace(name, "").ifBlank { name }
 
 @Composable
 fun ProgressLine(fraction: Float, modifier: Modifier = Modifier, color: Color = Palette.Accent) {
@@ -108,6 +139,7 @@ fun MediaCard(
     imagePadding: Dp = 0.dp,
     showTitle: Boolean = true,
     badge: String? = null,
+    rating: Float = 0f,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(width)) {
@@ -137,10 +169,17 @@ fun MediaCard(
                 url = image,
                 title = title,
                 contentScale = imageScale,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(imagePadding),
+                imagePadding = imagePadding,
+                modifier = Modifier.fillMaxSize(),
             )
+            if (rating > 0f) {
+                RatingChip(
+                    rating = rating,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(7.dp),
+                )
+            }
             if (badge != null) {
                 Text(
                     text = badge,

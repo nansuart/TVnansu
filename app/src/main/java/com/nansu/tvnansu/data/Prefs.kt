@@ -18,6 +18,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("reduce_motion", false)
         set(v) = sp.edit().putBoolean("reduce_motion", v).apply()
 
+    /** 0 small, 1 normal, 2 large, 3 extra large. */
+    var subtitleSize: Int
+        get() = sp.getInt("subtitle_size", 1)
+        set(v) = sp.edit().putInt("subtitle_size", v).apply()
+
+    /** Dark box behind subtitles instead of an outline. */
+    var subtitleBackground: Boolean
+        get() = sp.getBoolean("subtitle_background", false)
+        set(v) = sp.edit().putBoolean("subtitle_background", v).apply()
+
     /** Hours between automatic refreshes of the playlist. 0 = never. */
     var autoRefreshHours: Int
         get() = sp.getInt("auto_refresh_hours", 24)

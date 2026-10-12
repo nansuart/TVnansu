@@ -25,13 +25,14 @@ import com.nansu.tvnansu.ui.components.HeroData
 import com.nansu.tvnansu.ui.components.HeroScaffold
 import com.nansu.tvnansu.ui.components.MediaCard
 import com.nansu.tvnansu.ui.components.Shelf
+import com.nansu.tvnansu.ui.components.cleanTitle
 import com.nansu.tvnansu.ui.components.rememberHeroState
 import com.nansu.tvnansu.ui.focusMemory
 import com.nansu.tvnansu.ui.rememberActions
 import com.nansu.tvnansu.ui.rememberFocusMemory
 
 fun movieHero(m: MovieEntity) = HeroData(
-    title = m.name,
+    title = cleanTitle(m.name),
     image = m.backdrop ?: m.poster,
     wide = m.backdrop != null,
     meta = metaLine(m.year, m.rating, null),
@@ -40,7 +41,7 @@ fun movieHero(m: MovieEntity) = HeroData(
 )
 
 fun seriesHero(s: SeriesEntity) = HeroData(
-    title = s.name,
+    title = cleanTitle(s.name),
     image = s.backdrop ?: s.poster,
     wide = s.backdrop != null,
     meta = metaLine(s.year, s.rating, s.genre),
@@ -190,9 +191,10 @@ fun HomeScreen() {
                 Shelf("Películas añadidas recientemente") {
                     items(newMovies, key = { it.remoteId }) { m ->
                         MediaCard(
-                            title = m.name,
+                            title = cleanTitle(m.name),
                             image = m.poster,
                             width = 120.dp,
+                            rating = m.rating,
                             onClick = { actions.openMovie(m) },
                             onLongClick = { actions.toggleFavorite(Kind.MOVIE, m.remoteId, m.name, m.poster) },
                             onFocused = { hero.target = movieHero(m) },
@@ -207,9 +209,10 @@ fun HomeScreen() {
                 Shelf("Series actualizadas") {
                     items(newSeries, key = { it.remoteId }) { s ->
                         MediaCard(
-                            title = s.name,
+                            title = cleanTitle(s.name),
                             image = s.poster,
                             width = 120.dp,
+                            rating = s.rating,
                             onClick = { actions.openSeries(s) },
                             onLongClick = { actions.toggleFavorite(Kind.SERIES, s.remoteId, s.name, s.poster) },
                             onFocused = { hero.target = seriesHero(s) },

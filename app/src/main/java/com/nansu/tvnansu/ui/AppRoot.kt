@@ -25,6 +25,7 @@ import com.nansu.tvnansu.ui.screens.MovieDetailScreen
 import com.nansu.tvnansu.ui.screens.SeriesDetailScreen
 import com.nansu.tvnansu.ui.screens.SyncScreen
 import com.nansu.tvnansu.ui.theme.Palette
+import kotlinx.coroutines.delay
 
 @Composable
 fun AppRoot() {
@@ -56,6 +57,10 @@ fun AppRoot() {
         CompositionLocalProvider(LocalNavigator provides nav) {
             BackHandler(enabled = nav.stack.size > 1) {
                 nav.pop()?.let { holder.removeState(it.key) }
+            }
+            LaunchedEffect(nav.stack.size) {
+                delay(1_500)
+                nav.restorePending = false
             }
             val current = nav.current
             holder.SaveableStateProvider(current.key) {

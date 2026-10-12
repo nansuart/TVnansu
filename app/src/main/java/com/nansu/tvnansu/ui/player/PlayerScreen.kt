@@ -29,10 +29,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -64,6 +67,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
 import com.nansu.tvnansu.data.NowNext
+import com.nansu.tvnansu.data.PlayItem
 import com.nansu.tvnansu.data.PlayRequest
 import com.nansu.tvnansu.data.db.ChannelEntity
 import com.nansu.tvnansu.data.db.Kind
@@ -71,7 +75,9 @@ import com.nansu.tvnansu.ui.Fmt
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.PivotScroll
 import com.nansu.tvnansu.ui.components.LiveDot
+import com.nansu.tvnansu.ui.components.PillButton
 import com.nansu.tvnansu.ui.components.ProgressLine
+import com.nansu.tvnansu.ui.components.Segmented
 import com.nansu.tvnansu.ui.components.Spinner
 import com.nansu.tvnansu.ui.nav.LocalNavigator
 import com.nansu.tvnansu.ui.theme.Palette
@@ -110,6 +116,20 @@ fun PlayerScreen(request: PlayRequest) {
     var panel by remember { mutableStateOf<Panel?>(null) }
     var digits by remember { mutableStateOf("") }
     val rootFocus = remember { FocusRequester() }
+    val nextUpFocus = remember { FocusRequester() }
+    var subtitleSize by remember { mutableIntStateOf(repo.prefs.subtitleSize) }
+    var subtitleBackground by remember { mutableStateOf(repo.prefs.subtitleBackground) }
+    var nextUpDismissedFor by remember { mutableIntStateOf(-1) }
+
+    // "Next episode" card during the last 30 seconds of an episode.
+    val nextItem = if (item.kind == Kind.EPISODE) controller.items.getOrNull(controller.index + 1) else null
+    val remainingMs = controller.duration - controller.position
+    val showNextUp = nextItem != null &&
+        controller.duration > 120_000 &&
+        remainingMs in 1..30_000 &&
+        nextUpDismissedFor != controller.index &&
+        panel == null &&
+        controller.error == null
 
     fun poke() {
         overlay = true
@@ -139,10 +159,10 @@ fun PlayerScreen(request: PlayRequest) {
         }
     }
 
-    LaunchedEffect(panel) {
+    LaunchedEffect(panel, showNextUp) {
         if (panel == null) {
             delay(50)
-            runCatching { rootFocus.requestFocus() }
+            runCatching { if (showNextUp) nextUpFocus.requestFocus() else rootFocus.requestFocus() }
         }
     }
 
@@ -162,6 +182,7 @@ fun PlayerScreen(request: PlayRequest) {
     BackHandler {
         when {
             panel != null -> panel = null
+            showNextUp -> nextUpDismissedFor = controller.index
             digits.isNotEmpty() -> digits = ""
             else -> nav.pop()
         }
@@ -174,6 +195,9 @@ fun PlayerScreen(request: PlayRequest) {
             .focusRequester(rootFocus)
             .onKeyEvent { ev ->
                 if (ev.type != KeyEventType.KeyDown || panel != null) return@onKeyEvent false
+                if (showNextUp && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter)) {
+                    return@onKeyEvent false
+                }
                 val repeat = ev.nativeKeyEvent.repeatCount
                 val seekStep = when {
                     repeat < 4 -> 10_000L
@@ -240,10 +264,10 @@ fun PlayerScreen(request: PlayRequest) {
                     keepScreenOn = true
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
-                    subtitleView?.setFractionalTextSize(0.0533f * 1.2f)
                     player = controller.player
                 }
             },
+            update = { view -> SubtitleStyle.apply(view, subtitleSize, subtitleBackground) },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -284,12 +308,29 @@ fun PlayerScreen(request: PlayRequest) {
         }
 
         AnimatedVisibility(
-            visible = overlay && panel == null,
+            visible = overlay && panel == null && !showNextUp,
             enter = fadeIn() + slideInVertically { it / 6 },
             exit = fadeOut() + slideOutVertically { it / 6 },
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             if (isLive) LiveBanner(controller, nowNext) else VodControls(controller)
+        }
+
+        AnimatedVisibility(
+            visible = showNextUp,
+            enter = fadeIn() + slideInHorizontally { it / 3 },
+            exit = fadeOut() + slideOutHorizontally { it / 3 },
+            modifier = Modifier.align(Alignment.BottomEnd),
+        ) {
+            val upcoming = nextItem
+            if (upcoming != null) {
+                NextUpCard(
+                    next = upcoming,
+                    secondsLeft = (remainingMs / 1000).toInt().coerceAtLeast(0),
+                    onPlay = { controller.next() },
+                    focusRequester = nextUpFocus,
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -310,7 +351,20 @@ fun PlayerScreen(request: PlayRequest) {
             exit = fadeOut() + slideOutHorizontally { it / 3 },
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
-            TracksPanel(controller, onDone = { panel = null })
+            TracksPanel(
+                controller = controller,
+                subtitleSize = subtitleSize,
+                subtitleBackground = subtitleBackground,
+                onSubtitleSize = {
+                    subtitleSize = it
+                    repo.prefs.subtitleSize = it
+                },
+                onSubtitleBackground = {
+                    subtitleBackground = it
+                    repo.prefs.subtitleBackground = it
+                },
+                onDone = { panel = null },
+            )
         }
     }
 }
@@ -566,7 +620,74 @@ private fun ChannelListPanel(controller: PlayerController, onPick: (Int) -> Unit
 }
 
 @Composable
-private fun TracksPanel(controller: PlayerController, onDone: () -> Unit) {
+private fun NextUpCard(
+    next: PlayItem,
+    secondsLeft: Int,
+    onPlay: () -> Unit,
+    focusRequester: FocusRequester,
+) {
+    Row(
+        Modifier
+            .padding(end = 56.dp, bottom = 56.dp)
+            .width(520.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.Black.copy(alpha = 0.82f))
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(width = 176.dp, height = 99.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Palette.Surface2),
+        ) {
+            if (!next.image.isNullOrBlank()) {
+                AsyncImage(
+                    model = next.image,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Spacer(Modifier.width(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text("SIGUIENTE EPISODIO", style = Type.Caption, color = Palette.Accent)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                listOfNotNull(next.subtitle, next.title).joinToString("  ·  "),
+                style = Type.Label,
+                color = Palette.Text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(12.dp))
+            PillButton(
+                text = "Ver ahora",
+                leading = "▶",
+                primary = true,
+                onClick = onPlay,
+                modifier = Modifier.focusRequester(focusRequester),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Empieza en $secondsLeft s  ·  Atrás para seguir viendo",
+                style = Type.Caption,
+                color = Palette.TextDim,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TracksPanel(
+    controller: PlayerController,
+    subtitleSize: Int,
+    subtitleBackground: Boolean,
+    onSubtitleSize: (Int) -> Unit,
+    onSubtitleBackground: (Boolean) -> Unit,
+    onDone: () -> Unit,
+) {
     val audio = remember(controller.tracks) { controller.audioOptions() }
     val text = remember(controller.tracks) { controller.textOptions() }
     val firstRequester = remember { FocusRequester() }
@@ -579,6 +700,7 @@ private fun TracksPanel(controller: PlayerController, onDone: () -> Unit) {
             .fillMaxHeight()
             .width(380.dp)
             .background(Color.Black.copy(alpha = 0.9f))
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 36.dp)
     ) {
         Text("Audio", style = Type.Title, color = Palette.Text)
@@ -611,6 +733,20 @@ private fun TracksPanel(controller: PlayerController, onDone: () -> Unit) {
                 modifier = if (audio.isEmpty() && i == 0) Modifier.focusRequester(firstRequester) else Modifier,
             )
         }
+        Spacer(Modifier.height(24.dp))
+        Text("Tamaño de subtítulos", style = Type.Section, color = Palette.Text)
+        Spacer(Modifier.height(10.dp))
+        Segmented(
+            options = listOf("S", "M", "L", "XL"),
+            selected = subtitleSize,
+            onSelect = onSubtitleSize,
+        )
+        Spacer(Modifier.height(12.dp))
+        Segmented(
+            options = listOf("Contorno", "Fondo"),
+            selected = if (subtitleBackground) 1 else 0,
+            onSelect = { onSubtitleBackground(it == 1) },
+        )
     }
 }
 

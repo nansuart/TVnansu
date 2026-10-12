@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import com.nansu.tvnansu.data.SyncState
 import com.nansu.tvnansu.ui.LocalRepository
+import com.nansu.tvnansu.ui.components.LogoFull
 import com.nansu.tvnansu.ui.components.PillButton
 import com.nansu.tvnansu.ui.components.Segmented
 import com.nansu.tvnansu.ui.components.Spinner
@@ -95,7 +96,7 @@ fun AddPlaylistScreen(first: Boolean) {
                 .weight(0.9f)
                 .padding(top = 40.dp, end = 48.dp)
         ) {
-            Text("TVnansu", style = Type.Display, color = Palette.Text)
+            LogoFull(height = 60.dp)
             Spacer(Modifier.height(16.dp))
             Text(
                 text = if (first) "Añade tu lista para empezar." else "Añadir otra lista",
@@ -229,7 +230,7 @@ fun SyncScreen() {
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("TVnansu", style = Type.Display, color = Palette.Text)
+            LogoFull(height = 60.dp)
             Spacer(Modifier.height(32.dp))
             if (!failed) {
                 Spinner()
@@ -280,6 +281,8 @@ fun SettingsScreen() {
     var liveFormat by remember { mutableStateOf(repo.prefs.liveFormat) }
     var reduceMotion by remember { mutableStateOf(repo.prefs.reduceMotion) }
     var refreshHours by remember { mutableIntStateOf(repo.prefs.autoRefreshHours) }
+    var subtitleSize by remember { mutableIntStateOf(repo.prefs.subtitleSize) }
+    var subtitleBackground by remember { mutableStateOf(repo.prefs.subtitleBackground) }
 
     Column(
         Modifier
@@ -352,6 +355,35 @@ fun SettingsScreen() {
             )
         }
 
+        Spacer(Modifier.height(10.dp))
+        SettingRow(
+            title = "Tamaño de los subtítulos",
+            description = "También se cambia durante la reproducción, en el panel de audio y subtítulos.",
+        ) {
+            Segmented(
+                options = com.nansu.tvnansu.ui.player.SubtitleStyle.labels,
+                selected = subtitleSize,
+                onSelect = {
+                    subtitleSize = it
+                    repo.prefs.subtitleSize = it
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingRow(
+            title = "Estilo de los subtítulos",
+            description = "Contorno negro sobre la imagen, o caja oscura detrás del texto para leer mejor en escenas claras.",
+        ) {
+            Segmented(
+                options = listOf("Contorno", "Fondo"),
+                selected = if (subtitleBackground) 1 else 0,
+                onSelect = {
+                    subtitleBackground = it == 1
+                    repo.prefs.subtitleBackground = subtitleBackground
+                },
+            )
+        }
+
         Spacer(Modifier.height(32.dp))
         Text("Interfaz y datos", style = Type.Title, color = Palette.Text)
         Spacer(Modifier.height(12.dp))
@@ -386,7 +418,7 @@ fun SettingsScreen() {
 
         Spacer(Modifier.height(32.dp))
         Text(
-            "TVnansu ${com.nansu.tvnansu.BuildConfig.VERSION_NAME}  ·  Reproductor personal. La app no incluye contenido.",
+            "nansu tv ${com.nansu.tvnansu.BuildConfig.VERSION_NAME}  ·  Reproductor personal. La app no incluye contenido.",
             style = Type.Caption,
             color = Palette.TextFaint,
         )

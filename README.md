@@ -1,4 +1,4 @@
-# TVnansu
+# nansu tv
 
 Reproductor personal de IPTV para Android TV y Google TV, con interfaz tipo Netflix / Apple TV.
 Funciona con cuentas **Xtream Codes** (servidor, usuario y contraseña) y con **listas M3U**.
@@ -16,6 +16,8 @@ La app no incluye ningún contenido: solo reproduce las listas que añadas tú.
 3. Acepta la instalación. La primera vez Android te pedirá permitir que Downloader instale apps.
 4. Para actualizar, repite los mismos pasos: la nueva versión se instala encima y conserva tus listas, favoritos y progreso.
 
+El archivo se sigue llamando `TVnansu.apk` para que la dirección de Downloader no cambie.
+
 ## Qué incluye
 
 - Inicio con *Seguir viendo*, canales recientes, Mi lista y novedades.
@@ -23,7 +25,8 @@ La app no incluye ningún contenido: solo reproduce las listas que añadas tú.
 - **Películas** y **Series** en filas por categoría, con fondo grande que cambia al moverte.
 - Fichas de película y de serie (temporadas, episodios, progreso de cada episodio).
 - Buscador con teclado en pantalla.
-- Reproductor con zapping, lista de canales, números de canal, audio y subtítulos, avance rápido y reanudación.
+- Reproductor con zapping, lista de canales, números de canal, audio y subtítulos (con tamaño ajustable), avance rápido y reanudación.
+- Aviso de *Siguiente episodio* en los últimos 30 segundos de cada capítulo.
 - Mantén pulsado OK sobre cualquier canal, película o serie para añadirlo a Mi lista o a favoritos.
 
 ## Controles del reproductor
@@ -35,7 +38,7 @@ La app no incluye ningún contenido: solo reproduce las listas que añadas tú.
 | ▲ | Audio y subtítulos | Canal anterior |
 | ▼ | Mostrar controles | Canal siguiente |
 | Números | — | Ir a un canal por número |
-| Atrás | Salir | Salir |
+| Atrás | Salir (o seguir viendo los créditos si aparece *Siguiente episodio*) | Salir |
 
 ## Para desarrollo
 

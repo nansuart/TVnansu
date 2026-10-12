@@ -53,6 +53,7 @@ import com.nansu.tvnansu.ui.components.LoadingView
 import com.nansu.tvnansu.ui.components.MediaCard
 import com.nansu.tvnansu.ui.components.PillButton
 import com.nansu.tvnansu.ui.components.TabPill
+import com.nansu.tvnansu.ui.components.cleanTitle
 import com.nansu.tvnansu.ui.focusMemory
 import com.nansu.tvnansu.ui.rememberActions
 import com.nansu.tvnansu.ui.rememberFocusMemory
@@ -106,7 +107,7 @@ fun MovieDetailScreen(remoteId: String) {
         ) {
             Text("PELÍCULA", style = Type.Label, color = Palette.Accent)
             Spacer(Modifier.height(10.dp))
-            Text(m.name, style = Type.Display, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(cleanTitle(m.name), style = Type.Display, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(12.dp))
             val meta = listOfNotNull(
                 metaLine(d?.year ?: m.year, d?.rating ?: m.rating, d?.genre).takeIf { it.isNotBlank() },
@@ -245,7 +246,7 @@ fun SeriesDetailScreen(remoteId: String) {
             Column(Modifier.padding(start = 56.dp, end = 360.dp)) {
                 Text("SERIE", style = Type.Label, color = Palette.Accent)
                 Spacer(Modifier.height(8.dp))
-                Text(s.name, style = Type.Display, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(cleanTitle(s.name), style = Type.Display, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(10.dp))
                 val meta = listOfNotNull(
                     metaLine(d?.year ?: s.year, d?.rating ?: s.rating, d?.genre ?: s.genre).takeIf { it.isNotBlank() },
@@ -409,6 +410,7 @@ fun CategoryGridScreen(kind: Kind, categoryId: String, title: String) {
                             title = item.title,
                             image = item.poster,
                             width = 112.dp,
+                            rating = item.rating,
                             onClick = {
                                 if (isSeries) actions.openSeries(item.remoteId) else actions.openMovie(item.remoteId)
                             },

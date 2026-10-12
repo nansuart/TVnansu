@@ -37,6 +37,7 @@ import com.nansu.tvnansu.ui.PivotScroll
 import com.nansu.tvnansu.ui.components.MediaCard
 import com.nansu.tvnansu.ui.components.SearchKeyboard
 import com.nansu.tvnansu.ui.components.Shelf
+import com.nansu.tvnansu.ui.components.cleanTitle
 import com.nansu.tvnansu.ui.focusMemory
 import com.nansu.tvnansu.ui.rememberActions
 import com.nansu.tvnansu.ui.rememberFocusMemory
@@ -122,7 +123,7 @@ fun SearchScreen() {
                     color = Palette.TextDim,
                     modifier = Modifier.padding(top = 16.dp),
                 )
-                else -> PivotScroll(0.dp) {
+                else -> PivotScroll(com.nansu.tvnansu.ui.components.ROW_TOP_MARGIN) {
                     LazyColumn(
                         state = rememberLazyListState(),
                         modifier = Modifier.fillMaxSize(),
@@ -148,9 +149,10 @@ fun SearchScreen() {
                                 Shelf("Películas") {
                                     items(results.movies, key = { it.id }) { m ->
                                         MediaCard(
-                                            title = m.name,
+                                            title = cleanTitle(m.name),
                                             image = m.poster,
                                             width = 110.dp,
+                                            rating = m.rating,
                                             onClick = { actions.openMovie(m) },
                                             onLongClick = { actions.toggleFavorite(Kind.MOVIE, m.remoteId, m.name, m.poster) },
                                             modifier = Modifier.focusMemory("sr:mv:${m.remoteId}", memory),
@@ -164,9 +166,10 @@ fun SearchScreen() {
                                 Shelf("Series") {
                                     items(results.series, key = { it.id }) { s ->
                                         MediaCard(
-                                            title = s.name,
+                                            title = cleanTitle(s.name),
                                             image = s.poster,
                                             width = 110.dp,
+                                            rating = s.rating,
                                             onClick = { actions.openSeries(s) },
                                             onLongClick = { actions.toggleFavorite(Kind.SERIES, s.remoteId, s.name, s.poster) },
                                             modifier = Modifier.focusMemory("sr:se:${s.remoteId}", memory),

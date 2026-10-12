@@ -38,6 +38,7 @@ import androidx.tv.material3.Text
 import com.nansu.tvnansu.data.SyncState
 import com.nansu.tvnansu.ui.Fmt
 import com.nansu.tvnansu.ui.LocalRepository
+import com.nansu.tvnansu.ui.components.LogoCompact
 import com.nansu.tvnansu.ui.components.Spinner
 import com.nansu.tvnansu.ui.components.TabPill
 import com.nansu.tvnansu.ui.theme.Palette
@@ -135,8 +136,8 @@ fun MainScreen() {
                     .padding(start = 48.dp, end = 48.dp, top = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("TVnansu", style = Type.Title, color = Palette.Text)
-                Spacer(Modifier.width(36.dp))
+                LogoCompact(height = 30.dp)
+                Spacer(Modifier.width(32.dp))
                 Row(
                     Modifier
                         .focusRestorer()

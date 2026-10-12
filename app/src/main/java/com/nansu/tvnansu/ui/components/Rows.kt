@@ -31,6 +31,9 @@ import com.nansu.tvnansu.ui.theme.Palette
 import com.nansu.tvnansu.ui.theme.Type
 import kotlinx.coroutines.delay
 
+/** Space kept above the focused card: the row title plus room for the focus zoom. */
+val ROW_TOP_MARGIN = 56.dp
+
 /** A titled horizontal shelf of cards. */
 @Composable
 fun Shelf(
@@ -100,7 +103,7 @@ fun HeroScaffold(
                     .padding(start = 48.dp, top = 84.dp, end = 400.dp)
                     .height(176.dp),
             )
-            PivotScroll(0.dp) {
+            PivotScroll(ROW_TOP_MARGIN) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier

@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nansu.tvnansu.data.Repository
+import com.nansu.tvnansu.ui.nav.LocalNavigator
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -61,10 +62,12 @@ fun rememberFocusMemory(): MutableState<String?> = rememberSaveable { mutableSta
  */
 fun Modifier.focusMemory(key: String, memory: MutableState<String?>): Modifier = composed {
     val requester = remember { FocusRequester() }
+    val nav = LocalNavigator.current
     LaunchedEffect(Unit) {
-        if (memory.value == key) {
+        if (memory.value == key && nav.restorePending) {
             delay(30)
             runCatching { requester.requestFocus() }
+            nav.restorePending = false
         }
     }
     this

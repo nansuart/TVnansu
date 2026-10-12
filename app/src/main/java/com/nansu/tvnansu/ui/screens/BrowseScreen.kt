@@ -35,6 +35,7 @@ import com.nansu.tvnansu.ui.components.LoadingView
 import com.nansu.tvnansu.ui.components.MediaCard
 import com.nansu.tvnansu.ui.components.Shelf
 import com.nansu.tvnansu.ui.components.ViewAllCard
+import com.nansu.tvnansu.ui.components.cleanTitle
 import com.nansu.tvnansu.ui.components.rememberHeroState
 import com.nansu.tvnansu.ui.focusMemory
 import com.nansu.tvnansu.ui.rememberActions
@@ -48,10 +49,11 @@ data class BrowseItem(
     val title: String,
     val poster: String?,
     val hero: HeroData,
+    val rating: Float = 0f,
 )
 
-fun MovieEntity.toBrowse() = BrowseItem(remoteId, name, poster, movieHero(this))
-fun SeriesEntity.toBrowse() = BrowseItem(remoteId, name, poster, seriesHero(this))
+fun MovieEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, movieHero(this), rating)
+fun SeriesEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, seriesHero(this), rating)
 
 const val ROW_LIMIT = 40
 
@@ -118,6 +120,7 @@ fun BrowseScreen(isSeries: Boolean) {
             image = item.poster,
             width = 120.dp,
             onClick = { open(item) },
+            rating = item.rating,
             onLongClick = { toggleFav(item) },
             onFocused = { hero.target = item.hero },
             modifier = Modifier.focusMemory("$prefix:$rowKey:${item.remoteId}", memory),

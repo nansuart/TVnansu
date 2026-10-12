@@ -16,10 +16,10 @@ object Palette {
     val Text = Color(0xFFF5F5F7)
     val TextDim = Color(0xFFA6A6B0)
     val TextFaint = Color(0xFF6E6E7A)
-    val Accent = Color(0xFFFF5A36)
-    val AccentSoft = Color(0x33FF5A36)
+    val Accent = Color(0xFFEF4E58)
+    val AccentSoft = Color(0x33EF4E58)
     val Focus = Color(0xFFFFFFFF)
-    val Live = Color(0xFFE5484D)
+    val Live = Color(0xFFEF4E58)
 }
 
 object Type {
