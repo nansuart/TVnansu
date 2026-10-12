@@ -37,6 +37,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(pk("subtitle_background"), sp.getBoolean("subtitle_background", false))
         set(v) = sp.edit().putBoolean(pk("subtitle_background"), v).apply()
 
+    /** Channel logos: 0 colour (smart background), 1 white. */
+    var logoStyle: Int
+        get() = sp.getInt("logo_style", 0)
+        set(v) = sp.edit().putInt("logo_style", v).apply()
+
     /** Hours between automatic refreshes of the playlist. 0 = never. */
     var autoRefreshHours: Int
         get() = sp.getInt("auto_refresh_hours", 24)

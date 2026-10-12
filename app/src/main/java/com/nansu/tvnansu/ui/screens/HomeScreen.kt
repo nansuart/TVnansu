@@ -1,5 +1,6 @@
 package com.nansu.tvnansu.ui.screens
 
+import com.nansu.tvnansu.ui.components.ChannelLogo
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -371,8 +372,7 @@ fun ChannelCard(
         image = c.logo,
         width = width,
         aspectRatio = 16f / 9f,
-        imageScale = ContentScale.Fit,
-        imagePadding = 18.dp,
+        art = { ChannelLogo(url = c.logo, name = c.name, modifier = Modifier.fillMaxSize()) },
         onClick = onClick,
         onLongClick = onLongClick,
         onFocused = onFocused,
@@ -525,24 +525,14 @@ private fun EventCard(
                 .padding(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(width = 58.dp, height = 34.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Palette.Surface3),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (!event.channel.logo.isNullOrBlank()) {
-                        AsyncImage(
-                            model = event.channel.logo,
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(4.dp),
-                        )
-                    }
-                }
+                ChannelLogo(
+                    url = event.channel.logo,
+                    name = "",
+                    showNameFallback = false,
+                    modifier = Modifier
+                        .size(width = 64.dp, height = 36.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                )
                 Spacer(Modifier.weight(1f))
                 LiveDot()
                 Spacer(Modifier.width(6.dp))

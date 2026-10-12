@@ -1,5 +1,6 @@
 package com.nansu.tvnansu.ui.screens
 
+import com.nansu.tvnansu.ui.components.ChannelLogo
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -316,26 +317,13 @@ private fun ChannelRow(
                 color = Palette.TextFaint,
                 modifier = Modifier.width(36.dp),
             )
-            Box(
-                Modifier
-                    .size(width = 64.dp, height = 40.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Palette.Surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!channel.logo.isNullOrBlank()) {
-                    AsyncImage(
-                        model = channel.logo,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(4.dp),
-                    )
-                } else {
-                    Text(channel.name.take(2).uppercase(), style = Type.Caption, color = Palette.TextDim)
-                }
-            }
+            ChannelLogo(
+                url = channel.logo,
+                name = channel.name.take(2).uppercase(),
+                modifier = Modifier
+                    .size(width = 64.dp, height = 36.dp)
+                    .clip(RoundedCornerShape(6.dp)),
+            )
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -387,26 +375,13 @@ private fun ChannelDetailPane(channel: ChannelEntity?, epgVersion: Int, modifier
             )
             return@Column
         }
-        Box(
-            Modifier
+        ChannelLogo(
+            url = channel.logo,
+            name = channel.name,
+            modifier = Modifier
                 .size(width = 200.dp, height = 112.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Palette.Surface),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (!channel.logo.isNullOrBlank()) {
-                AsyncImage(
-                    model = channel.logo,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                )
-            } else {
-                Text(channel.name, style = Type.Section, color = Palette.TextDim)
-            }
-        }
+                .clip(RoundedCornerShape(14.dp)),
+        )
         Spacer(Modifier.height(18.dp))
         Text(channel.name, style = Type.Title, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(18.dp))

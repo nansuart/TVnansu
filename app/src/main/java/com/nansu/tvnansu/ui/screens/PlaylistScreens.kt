@@ -283,6 +283,7 @@ fun SettingsScreen() {
     var refreshHours by remember { mutableIntStateOf(repo.prefs.autoRefreshHours) }
     var subtitleSize by remember { mutableIntStateOf(repo.prefs.subtitleSize) }
     var subtitleBackground by remember { mutableStateOf(repo.prefs.subtitleBackground) }
+    var logoStyle by remember { mutableIntStateOf(repo.prefs.logoStyle) }
 
     Column(
         Modifier
@@ -412,6 +413,20 @@ fun SettingsScreen() {
                 onSelect = {
                     reduceMotion = it == 1
                     repo.prefs.reduceMotion = reduceMotion
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingRow(
+            title = "Logos de canales",
+            description = "Color: cada logo con su fondo completo o sobre placa clara si es oscuro. Blanco: los logos transparentes en blanco; los que traen fondo propio se mantienen.",
+        ) {
+            Segmented(
+                options = listOf("Color", "Blanco"),
+                selected = logoStyle,
+                onSelect = {
+                    logoStyle = it
+                    repo.prefs.logoStyle = it
                 },
             )
         }

@@ -140,6 +140,7 @@ fun MediaCard(
     showTitle: Boolean = true,
     badge: String? = null,
     rating: Float = 0f,
+    art: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(Modifier.width(width)) {
@@ -165,13 +166,17 @@ fun MediaCard(
                 focusedContentColor = Palette.Text,
             ),
         ) {
-            ArtImage(
-                url = image,
-                title = title,
-                contentScale = imageScale,
-                imagePadding = imagePadding,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (art != null) {
+                art()
+            } else {
+                ArtImage(
+                    url = image,
+                    title = title,
+                    contentScale = imageScale,
+                    imagePadding = imagePadding,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             if (rating > 0f) {
                 RatingChip(
                     rating = rating,

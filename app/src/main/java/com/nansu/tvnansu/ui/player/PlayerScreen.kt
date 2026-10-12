@@ -1,5 +1,6 @@
 package com.nansu.tvnansu.ui.player
 
+import com.nansu.tvnansu.ui.components.ChannelLogo
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -537,24 +538,13 @@ private fun LiveBanner(controller: PlayerController, nowNext: NowNext?) {
                 .padding(horizontal = 56.dp, vertical = 36.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
+            ChannelLogo(
+                url = item.image,
+                name = item.title,
+                modifier = Modifier
                     .size(width = 150.dp, height = 84.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Palette.Surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!item.image.isNullOrBlank()) {
-                    AsyncImage(
-                        model = item.image,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(10.dp),
-                    )
-                }
-            }
+                    .clip(RoundedCornerShape(12.dp)),
+            )
             Spacer(Modifier.width(24.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -664,23 +654,14 @@ private fun ChannelListPanel(controller: PlayerController, onPick: (Int) -> Unit
                                 style = Type.Caption,
                                 modifier = Modifier.width(36.dp),
                             )
-                            Box(
-                                Modifier
-                                    .size(width = 52.dp, height = 32.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Palette.Surface),
-                            ) {
-                                if (!it.image.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = it.image,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(3.dp),
-                                    )
-                                }
-                            }
+                            ChannelLogo(
+                                url = it.image,
+                                name = "",
+                                showNameFallback = false,
+                                modifier = Modifier
+                                    .size(width = 52.dp, height = 30.dp)
+                                    .clip(RoundedCornerShape(6.dp)),
+                            )
                             Spacer(Modifier.width(12.dp))
                             Text(it.title, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (current) {
