@@ -28,6 +28,9 @@ jobs:
         with:
           gradle-version: 8.14.3
 
+      - name: Probar migración de la base de datos
+        run: gradle :app:testReleaseUnitTest --stacktrace --no-daemon
+
       - name: Compilar
         run: gradle :app:assembleRelease --stacktrace --no-daemon
 
