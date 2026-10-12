@@ -56,8 +56,8 @@ fun SeriesEntity.toBrowse() = BrowseItem(remoteId, name, poster, seriesHero(this
 const val ROW_LIMIT = 40
 
 suspend fun loadCategoryItems(repo: Repository, pid: Long, isSeries: Boolean, categoryId: String, limit: Int): List<BrowseItem> =
-    if (isSeries) repo.dao.seriesIn(pid, categoryId, limit).map { it.toBrowse() }
-    else repo.dao.moviesIn(pid, categoryId, limit).map { it.toBrowse() }
+    if (isSeries) repo.dao.seriesIn(pid, categoryId, limit).distinctBy { it.remoteId }.map { it.toBrowse() }
+    else repo.dao.moviesIn(pid, categoryId, limit).distinctBy { it.remoteId }.map { it.toBrowse() }
 
 @Composable
 fun BrowseScreen(isSeries: Boolean) {
@@ -73,12 +73,12 @@ fun BrowseScreen(isSeries: Boolean) {
         value = repo.dao.categories(pid, kind.name)
     }
     val recent by produceState(emptyList<BrowseItem>(), pid, version, isSeries) {
-        value = if (isSeries) repo.dao.recentSeries(pid, ROW_LIMIT).map { it.toBrowse() }
-        else repo.dao.recentMovies(pid, ROW_LIMIT).map { it.toBrowse() }
+        value = if (isSeries) repo.dao.recentSeries(pid, ROW_LIMIT).distinctBy { it.remoteId }.map { it.toBrowse() }
+        else repo.dao.recentMovies(pid, ROW_LIMIT).distinctBy { it.remoteId }.map { it.toBrowse() }
     }
     val favoriteRefs by remember(pid) { repo.favorites(pid) }.collectAsState(initial = emptyList())
     val favorites = remember(favoriteRefs, kind) {
-        favoriteRefs.filter { it.kind == kind.name }.map {
+        favoriteRefs.filter { it.kind == kind.name }.distinctBy { it.remoteId }.map {
             BrowseItem(
                 it.remoteId, it.title, it.image,
                 HeroData(it.title, it.image, wide = false, eyebrow = if (isSeries) "SERIE" else "PELÍCULA"),

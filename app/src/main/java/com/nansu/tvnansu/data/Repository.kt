@@ -315,8 +315,10 @@ class Repository(
             var headerEpg: String? = null
             var count = 0
             var number = 0
+            val seenUrls = HashSet<String>()
 
             M3uParser.parse(input, onHeader = { h -> headerEpg = h["url-tvg"] ?: h["x-tvg-url"] }) { e ->
+                if (!seenUrls.add(e.url)) return@parse
                 count++
                 if (count % 1000 == 0) report("Leyendo lista: $count elementos")
                 val group = e.group ?: "Sin categoría"
@@ -502,7 +504,7 @@ class Repository(
         val details = if (p != null && p.type == SourceType.XTREAM) {
             xtreamSeries(p, series)
         } else {
-            val eps = dao.episodes(series.playlistId, series.remoteId)
+            val eps = dao.episodes(series.playlistId, series.remoteId).distinctBy { it.remoteId }
             SeriesDetails(
                 plot = series.plot, cast = null, genre = series.genre, year = series.year,
                 rating = series.rating, backdrop = series.backdrop, poster = series.poster,
@@ -552,6 +554,7 @@ class Repository(
             else -> Unit
         }
 
+        val uniqueEps = eps.distinctBy { it.remoteId }
         val seasonNames = HashMap<Int, String>()
         root.list("seasons")?.forEach { s ->
             val m = Json.asMap(s) ?: return@forEach
@@ -573,7 +576,7 @@ class Repository(
             rating = info.float("rating") ?: series.rating,
             backdrop = backdrop,
             poster = info.str("cover") ?: series.poster,
-            seasons = eps.groupBy { it.season }.toSortedMap().map { (n, list) ->
+            seasons = uniqueEps.groupBy { it.season }.toSortedMap().map { (n, list) ->
                 Season(n, seasonNames[n]?.takeIf { !it.equals("Season $n", true) } ?: "Temporada $n", list.sortedBy { it.episode })
             },
         )
@@ -758,20 +761,23 @@ class Repository(
 
     suspend fun channelsByIds(pid: Long, ids: List<String>): List<ChannelEntity> {
         if (ids.isEmpty()) return emptyList()
-        val all = ids.chunked(400).flatMap { dao.channelsByIds(pid, it) }.associateBy { it.remoteId }
-        return ids.mapNotNull { all[it] }
+        val unique = ids.distinct()
+        val all = unique.chunked(400).flatMap { dao.channelsByIds(pid, it) }.associateBy { it.remoteId }
+        return unique.mapNotNull { all[it] }
     }
 
     suspend fun moviesByIds(pid: Long, ids: List<String>): List<MovieEntity> {
         if (ids.isEmpty()) return emptyList()
-        val all = ids.chunked(400).flatMap { dao.moviesByIds(pid, it) }.associateBy { it.remoteId }
-        return ids.mapNotNull { all[it] }
+        val unique = ids.distinct()
+        val all = unique.chunked(400).flatMap { dao.moviesByIds(pid, it) }.associateBy { it.remoteId }
+        return unique.mapNotNull { all[it] }
     }
 
     suspend fun seriesByIds(pid: Long, ids: List<String>): List<SeriesEntity> {
         if (ids.isEmpty()) return emptyList()
-        val all = ids.chunked(400).flatMap { dao.seriesByIds(pid, it) }.associateBy { it.remoteId }
-        return ids.mapNotNull { all[it] }
+        val unique = ids.distinct()
+        val all = unique.chunked(400).flatMap { dao.seriesByIds(pid, it) }.associateBy { it.remoteId }
+        return unique.mapNotNull { all[it] }
     }
 
     // ------------------------------------------------------------------ helpers

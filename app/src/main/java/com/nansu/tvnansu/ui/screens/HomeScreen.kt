@@ -68,16 +68,16 @@ fun HomeScreen() {
     val recentRefs by remember(pid) { repo.recentChannels(pid) }.collectAsState(initial = emptyList())
 
     val recentChannels by produceState(emptyList<ChannelEntity>(), pid, recentRefs, version) {
-        value = repo.channelsByIds(pid, recentRefs.map { it.remoteId })
+        value = repo.channelsByIds(pid, recentRefs.map { it.remoteId }.distinct())
     }
     val favoriteChannels by produceState(emptyList<ChannelEntity>(), pid, favorites, version) {
-        value = repo.channelsByIds(pid, favorites.filter { it.kind == Kind.LIVE.name }.map { it.remoteId })
+        value = repo.channelsByIds(pid, favorites.filter { it.kind == Kind.LIVE.name }.map { it.remoteId }.distinct())
     }
     val newMoviesOrNull by produceState<List<MovieEntity>?>(null, pid, version) {
-        value = repo.dao.recentMovies(pid, 30)
+        value = repo.dao.recentMovies(pid, 30).distinctBy { it.remoteId }
     }
     val newSeriesOrNull by produceState<List<SeriesEntity>?>(null, pid, version) {
-        value = repo.dao.recentSeries(pid, 30)
+        value = repo.dao.recentSeries(pid, 30).distinctBy { it.remoteId }
     }
     val newMovies = newMoviesOrNull ?: emptyList()
     val newSeries = newSeriesOrNull ?: emptyList()
