@@ -31,6 +31,15 @@ jobs:
       - name: Probar migración de la base de datos
         run: gradle :app:testReleaseUnitTest --stacktrace --no-daemon
 
+      - name: Verificar que las pruebas se ejecutaron
+        run: |
+          f=app/build/test-results/testReleaseUnitTest/TEST-com.nansu.tvnansu.data.db.MigrationTest.xml
+          test -f "$f"
+          grep -o '<testsuite[^>]*>' "$f"
+          grep -q 'tests="2"' "$f"
+          grep -q 'failures="0"' "$f"
+          grep -q 'errors="0"' "$f"
+
       - name: Compilar
         run: gradle :app:assembleRelease --stacktrace --no-daemon
 
