@@ -1,0 +1,53 @@
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+
+      - name: Compilar
+        run: gradle :app:assembleRelease --stacktrace --no-daemon
+
+      - name: Preparar APK
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk TVnansu.apk
+          ls -la TVnansu.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TVnansu-apk
+          path: TVnansu.apk
+
+      - name: Publicar versión
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: TVnansu 0.1.${{ github.run_number }}
+          body: |
+            Instalar en la tele con Downloader usando esta dirección:
+            https://github.com/${{ github.repository }}/releases/latest/download/TVnansu.apk
+          files: TVnansu.apk
+          make_latest: true
