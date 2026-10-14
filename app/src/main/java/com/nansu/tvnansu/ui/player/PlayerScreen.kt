@@ -4,6 +4,7 @@ import com.nansu.tvnansu.ui.components.ChannelLogo
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -50,6 +51,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -79,6 +81,7 @@ import com.nansu.tvnansu.ui.toast
 import kotlinx.coroutines.launch
 import com.nansu.tvnansu.ui.PivotScroll
 import com.nansu.tvnansu.ui.components.LiveDot
+import com.nansu.tvnansu.ui.components.LogoCompact
 import com.nansu.tvnansu.ui.components.PillButton
 import com.nansu.tvnansu.ui.components.ProgressLine
 import com.nansu.tvnansu.ui.components.Segmented
@@ -128,6 +131,28 @@ fun PlayerScreen(request: PlayRequest) {
     var skipDismissedFor by remember { mutableIntStateOf(-1) }
     var introVersion by remember { mutableIntStateOf(0) }
     val markerScope = rememberCoroutineScope()
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    val watermark = remember { repo.prefs.watermark }
+    var leaving by remember { mutableStateOf(false) }
+
+    // Saves what is on screen so the channel card can show it later.
+    suspend fun captureFrame() {
+        val view = playerView ?: return
+        val current = controller.item
+        if (current.kind != Kind.LIVE || controller.error != null || controller.buffering || !controller.isPlaying) return
+        val bmp = FrameGrabber.grab(view) ?: return
+        val pid = controller.playlistIdForMarkers
+        repo.scope.launch { runCatching { repo.captures.save(pid, current.remoteId, bmp) } }
+    }
+
+    fun leave() {
+        if (leaving) return
+        leaving = true
+        scope.launch {
+            if (isLive) captureFrame()
+            nav.pop()
+        }
+    }
 
     // Intro learned for this series (marked once by the user, reused in every episode).
     val introMarker by produceState<IntroMarkerEntity?>(null, controller.index, introVersion) {
@@ -183,6 +208,16 @@ fun PlayerScreen(request: PlayRequest) {
         }
     }
 
+    // A frame a few seconds after tuning in, then every minute and a half.
+    LaunchedEffect(controller.index, isLive) {
+        if (!isLive) return@LaunchedEffect
+        delay(8_000)
+        while (true) {
+            captureFrame()
+            delay(90_000)
+        }
+    }
+
     LaunchedEffect(panel, showNextUp, showSkipIntro) {
         if (panel == null) {
             delay(50)
@@ -215,7 +250,7 @@ fun PlayerScreen(request: PlayRequest) {
             showNextUp -> nextUpDismissedFor = controller.index
             showSkipIntro -> skipDismissedFor = controller.index
             digits.isNotEmpty() -> digits = ""
-            else -> nav.pop()
+            else -> leave()
         }
     }
 
@@ -284,7 +319,7 @@ fun PlayerScreen(request: PlayRequest) {
     ) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
+                PlayerView(ctx).also { playerView = it }.apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -336,6 +371,18 @@ fun PlayerScreen(request: PlayRequest) {
                     .background(Color.Black.copy(alpha = 0.7f))
                     .padding(horizontal = 20.dp, vertical = 8.dp),
             )
+        }
+
+        // nansu tv watermark: live channels only, while the controls are hidden.
+        AnimatedVisibility(
+            visible = watermark && isLive && !overlay && panel == null && controller.error == null,
+            enter = fadeIn(tween(800)),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 40.dp, bottom = 30.dp),
+        ) {
+            LogoCompact(height = 24.dp, modifier = Modifier.graphicsLayer { alpha = 0.3f })
         }
 
         AnimatedVisibility(

@@ -341,4 +341,17 @@ interface AppDao {
 
     @Query("SELECT c.* FROM channel c JOIN category k ON k.playlistId = c.playlistId AND k.kind = 'LIVE' AND k.remoteId = c.categoryId WHERE c.playlistId = :pid AND (lower(k.name) LIKE '%noticia%' OR lower(k.name) LIKE '%news%' OR lower(c.name) LIKE '%noticia%' OR lower(c.name) LIKE '%news%' OR lower(c.name) LIKE '%24h%' OR lower(c.name) LIKE '%24 h%') ORDER BY c.number, c.id LIMIT 60")
     suspend fun newsChannels(pid: Long): List<ChannelEntity>
+
+    // ---- Recommendations and live themes ----
+    @Query("SELECT * FROM movie WHERE playlistId = :pid AND rating >= :minRating ORDER BY added DESC, id DESC LIMIT :limit")
+    suspend fun ratedMovies(pid: Long, minRating: Float, limit: Int): List<MovieEntity>
+
+    @Query("SELECT * FROM series WHERE playlistId = :pid AND rating >= :minRating ORDER BY added DESC, id DESC LIMIT :limit")
+    suspend fun ratedSeries(pid: Long, minRating: Float, limit: Int): List<SeriesEntity>
+
+    @Query("SELECT * FROM channel WHERE playlistId = :pid AND categoryId IN (:cats) ORDER BY number, id LIMIT :limit")
+    suspend fun channelsInCategories(pid: Long, cats: List<String>, limit: Int): List<ChannelEntity>
+
+    @Query("SELECT COUNT(*) FROM channel WHERE playlistId = :pid AND categoryId IN (:cats)")
+    suspend fun countInCategories(pid: Long, cats: List<String>): Int
 }

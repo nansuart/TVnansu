@@ -13,6 +13,7 @@ import com.nansu.tvnansu.data.db.Kind
 import com.nansu.tvnansu.data.db.MovieEntity
 import com.nansu.tvnansu.data.db.ProgressEntity
 import com.nansu.tvnansu.data.db.SeriesEntity
+import com.nansu.tvnansu.ui.components.LivePreviewHub
 import com.nansu.tvnansu.ui.nav.Dest
 import com.nansu.tvnansu.ui.nav.LocalNavigator
 import com.nansu.tvnansu.ui.nav.Navigator
@@ -37,11 +38,13 @@ class Actions(
 
     fun playChannels(channels: List<ChannelEntity>, index: Int) {
         if (channels.isEmpty()) return
+        LivePreviewHub.stop()
         nav.push(Dest.Player(PlayRequest(channels.map { repo.channelItem(it) }, index.coerceIn(0, channels.lastIndex))))
     }
 
     fun play(items: List<PlayItem>, index: Int, startMs: Long = 0) {
         if (items.isEmpty()) return
+        LivePreviewHub.stop()
         nav.push(Dest.Player(PlayRequest(items, index.coerceIn(0, items.lastIndex), startMs)))
     }
 

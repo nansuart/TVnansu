@@ -35,6 +35,7 @@ class TVnansuApp : Application(), SingletonImageLoader.Factory {
             .build()
         repository = Repository(db, http, Prefs(this))
         repository.collections.dir = java.io.File(filesDir, "colecciones").apply { mkdirs() }
+        repository.captures.dir = java.io.File(filesDir, "capturas").apply { mkdirs() }
         repository.collections.bundled = { assets.open("colecciones.json").bufferedReader().use { it.readText() } }
     }
 

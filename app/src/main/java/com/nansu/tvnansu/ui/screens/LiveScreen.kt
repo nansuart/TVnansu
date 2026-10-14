@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -45,7 +47,9 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil3.compose.AsyncImage
+import com.nansu.tvnansu.data.LiveTheme
 import com.nansu.tvnansu.data.NowNext
+import com.nansu.tvnansu.data.ThemeSummary
 import com.nansu.tvnansu.data.db.CategoryEntity
 import com.nansu.tvnansu.data.db.ChannelEntity
 import com.nansu.tvnansu.data.db.Kind
@@ -67,9 +71,10 @@ import kotlinx.coroutines.delay
 private const val CAT_FAV = "__fav"
 private const val CAT_RECENT = "__recent"
 private const val CAT_ALL = "__all"
+const val THEME_PREFIX = "theme:"
 
 @Composable
-fun LiveScreen() {
+fun LiveGuideScreen(start: String?) {
     val repo = LocalRepository.current
     val actions = rememberActions()
     val memory = rememberFocusMemory()
@@ -80,8 +85,14 @@ fun LiveScreen() {
     val categories by produceState<List<CategoryEntity>?>(null, pid, version) {
         value = repo.dao.categories(pid, Kind.LIVE.name)
     }
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    val themes by produceState(emptyList<ThemeSummary>(), pid, version) {
+        value = repo.liveThemes(pid)
+    }
+    var selected by rememberSaveable { mutableStateOf<String?>(start ?: CAT_ALL) }
     var pendingCategory by remember { mutableStateOf<String?>(null) }
+    val initialRequester = remember { FocusRequester() }
+    var initialDone by rememberSaveable { mutableStateOf(false) }
+    val initialId = start ?: CAT_ALL
 
     LaunchedEffect(categories) {
         val cats = categories ?: return@LaunchedEffect
@@ -99,10 +110,12 @@ fun LiveScreen() {
     val channels by produceState<List<ChannelEntity>?>(null, pid, selected, version) {
         val sel = selected ?: return@produceState
         value = null
-        value = when (sel) {
-            CAT_FAV -> repo.channelsByIds(pid, repo.favoritesOf(pid, Kind.LIVE).map { it.remoteId })
-            CAT_RECENT -> repo.channelsByIds(pid, repo.recentsOf(pid, 60).map { it.remoteId })
-            CAT_ALL -> repo.dao.allChannels(pid, 8000)
+        value = when {
+            sel == CAT_FAV -> repo.channelsByIds(pid, repo.favoritesOf(pid, Kind.LIVE).map { it.remoteId })
+            sel == CAT_RECENT -> repo.channelsByIds(pid, repo.recentsOf(pid, 60).map { it.remoteId })
+            sel == CAT_ALL -> repo.dao.allChannels(pid, 8000)
+            sel.startsWith(THEME_PREFIX) ->
+                LiveTheme.fromKey(sel.removePrefix(THEME_PREFIX))?.let { repo.channelsOfTheme(pid, it) } ?: emptyList()
             else -> repo.dao.channelsIn(pid, sel)
         }
     }
@@ -120,6 +133,14 @@ fun LiveScreen() {
 
     var focusedChannel by remember { mutableStateOf<ChannelEntity?>(null) }
 
+    LaunchedEffect(categories != null, themes) {
+        if (categories == null || initialDone) return@LaunchedEffect
+        if (initialId.startsWith(THEME_PREFIX) && themes.isEmpty()) return@LaunchedEffect
+        delay(150)
+        runCatching { initialRequester.requestFocus() }
+        initialDone = true
+    }
+
     val cats = categories
     if (cats == null) {
         LoadingView()
@@ -134,13 +155,16 @@ fun LiveScreen() {
         CAT_FAV to "Favoritos",
         CAT_RECENT to "Recientes",
         CAT_ALL to "Todos los canales",
-    )
+    ) + themes.map { (THEME_PREFIX + it.theme.name) to it.theme.title }
 
-    Row(
-        Modifier
-            .fillMaxSize()
-            .padding(top = 76.dp)
-    ) {
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            "Canales y guía",
+            style = Type.Title,
+            color = Palette.Text,
+            modifier = Modifier.padding(start = 48.dp, top = 28.dp, bottom = 8.dp),
+        )
+    Row(Modifier.fillMaxSize()) {
         // Categories
         PivotScroll(120.dp) {
             LazyColumn(
@@ -157,7 +181,9 @@ fun LiveScreen() {
                         selected = selected == id,
                         onFocus = { pendingCategory = id },
                         onClick = { selected = id },
-                        modifier = Modifier.focusMemory("live:cat:$id", memory),
+                        modifier = Modifier
+                            .focusMemory("live:cat:$id", memory)
+                            .then(if (id == initialId) Modifier.focusRequester(initialRequester) else Modifier),
                     )
                 }
                 item(key = "divider") {
@@ -227,6 +253,7 @@ fun LiveScreen() {
                 .weight(1f)
                 .padding(start = 24.dp, end = 48.dp, top = 12.dp),
         )
+    }
     }
 }
 

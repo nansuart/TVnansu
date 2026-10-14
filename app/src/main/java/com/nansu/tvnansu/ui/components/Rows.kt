@@ -24,7 +24,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import androidx.tv.material3.Text
+import com.nansu.tvnansu.ui.LocalEdge
+import com.nansu.tvnansu.ui.LocalTopInset
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.PivotScroll
 import com.nansu.tvnansu.ui.theme.Palette
@@ -40,22 +46,28 @@ fun Shelf(
     title: String,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
+    live: Boolean = false,
     content: LazyListScope.() -> Unit,
 ) {
+    val edge = LocalEdge.current
     Column(modifier.padding(bottom = 14.dp)) {
-        Text(
-            text = title,
-            style = Type.Section,
-            color = Palette.Text,
-            modifier = Modifier.padding(start = 48.dp, bottom = 4.dp),
-        )
-        PivotScroll(48.dp) {
+        Row(
+            Modifier.padding(start = edge, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (live) {
+                LiveDot()
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(text = title, style = Type.Section, color = Palette.Text)
+        }
+        PivotScroll(edge) {
             LazyRow(
                 state = state,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRestorer(),
-                contentPadding = PaddingValues(horizontal = 48.dp, vertical = 12.dp),
+                contentPadding = PaddingValues(start = edge, end = 48.dp, top = 12.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(18.dp),
                 content = content,
             )
@@ -100,7 +112,7 @@ fun HeroScaffold(
             HeroText(
                 data = hero,
                 modifier = Modifier
-                    .padding(start = 48.dp, top = 84.dp, end = 400.dp)
+                    .padding(start = LocalEdge.current, top = LocalTopInset.current, end = 400.dp)
                     .height(176.dp),
             )
             PivotScroll(ROW_TOP_MARGIN) {

@@ -285,11 +285,13 @@ fun SettingsScreen() {
     var subtitleSize by remember { mutableIntStateOf(repo.prefs.subtitleSize) }
     var subtitleBackground by remember { mutableStateOf(repo.prefs.subtitleBackground) }
     var logoStyle by remember { mutableIntStateOf(repo.prefs.logoStyle) }
+    var watermark by remember { mutableStateOf(repo.prefs.watermark) }
+    var livePreview by remember { mutableStateOf(repo.prefs.livePreview) }
 
     Column(
         Modifier
             .fillMaxSize()
-            .padding(top = 84.dp, start = 48.dp, end = 48.dp)
+            .padding(top = com.nansu.tvnansu.ui.LocalTopInset.current, start = com.nansu.tvnansu.ui.LocalEdge.current, end = 48.dp)
             .verticalScroll(rememberScrollState())
     ) {
         Text("Perfil", style = Type.Title, color = Palette.Text)
@@ -401,9 +403,38 @@ fun SettingsScreen() {
             )
         }
 
+        Spacer(Modifier.height(10.dp))
+        SettingRow(
+            title = "Mosca de nansu tv",
+            description = "Marca de agua al 30 % en la esquina inferior izquierda. Solo en canales en vivo; nunca en películas ni series.",
+        ) {
+            Segmented(
+                options = listOf("No", "Sí"),
+                selected = if (watermark) 1 else 0,
+                onSelect = {
+                    watermark = it == 1
+                    repo.prefs.watermark = watermark
+                },
+            )
+        }
+
         Spacer(Modifier.height(32.dp))
         Text("Interfaz y datos", style = Type.Title, color = Palette.Text)
         Spacer(Modifier.height(12.dp))
+        SettingRow(
+            title = "Vista previa en directo",
+            description = "El destacado de Inicio y el carrusel de En vivo muestran el canal en movimiento y sin sonido. Usa una conexión mientras se ve; desactívala si tu proveedor solo permite una.",
+        ) {
+            Segmented(
+                options = listOf("No", "Sí"),
+                selected = if (livePreview) 1 else 0,
+                onSelect = {
+                    livePreview = it == 1
+                    repo.prefs.livePreview = livePreview
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
         SettingRow(
             title = "Reducir animaciones",
             description = "Desactiva el zoom lento y los fundidos del fondo. Útil en aparatos poco potentes.",

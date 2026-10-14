@@ -70,6 +70,7 @@ class Repository(
     val platforms = PlatformClassifier(dao, http)
     private var platformJob: Job? = null
     val collections = Collections(dao, http, prefs)
+    val captures = Captures()
     private val seriesCache = LruCache<String, SeriesDetails>(24)
     private val shortEpgCache = LruCache<String, Pair<Long, List<XtreamApi.ShortEpg>>>(200)
 
@@ -904,6 +905,34 @@ class Repository(
             if (out.size > before) newsCount++
         }
         out
+    }
+
+    // ------------------------------------------------------------------ recommendations
+
+    /** Recently added movies with a good rating; falls back to the newest ones. */
+    suspend fun recommendedMovies(pid: Long, limit: Int = 30): List<MovieEntity> = withContext(Dispatchers.IO) {
+        val rated = dao.ratedMovies(pid, 6.5f, limit * 2).distinctBy { it.remoteId }
+        val list = if (rated.size >= 8) rated else (rated + dao.recentMovies(pid, limit)).distinctBy { it.remoteId }
+        list.take(limit)
+    }
+
+    suspend fun recommendedSeries(pid: Long, limit: Int = 30): List<SeriesEntity> = withContext(Dispatchers.IO) {
+        val rated = dao.ratedSeries(pid, 6.5f, limit * 2).distinctBy { it.remoteId }
+        val list = if (rated.size >= 8) rated else (rated + dao.recentSeries(pid, limit)).distinctBy { it.remoteId }
+        list.take(limit)
+    }
+
+    // ------------------------------------------------------------------ live themes
+
+    suspend fun liveThemes(pid: Long): List<ThemeSummary> = withContext(Dispatchers.IO) {
+        themeCategories(dao.categories(pid, Kind.LIVE.name)).map { (theme, cats) ->
+            ThemeSummary(theme, cats, cats.chunked(400).sumOf { dao.countInCategories(pid, it) })
+        }.filter { it.channelCount > 0 }.sortedBy { it.theme.ordinal }
+    }
+
+    suspend fun channelsOfTheme(pid: Long, theme: LiveTheme, limit: Int = 3000): List<ChannelEntity> = withContext(Dispatchers.IO) {
+        val cats = themeCategories(dao.categories(pid, Kind.LIVE.name))[theme] ?: return@withContext emptyList()
+        cats.chunked(400).flatMap { dao.channelsInCategories(pid, it, limit) }.distinctBy { it.remoteId }.take(limit)
     }
 
     /** Fetches wide backdrops for featured movies that lack one (Xtream only, a few calls). */

@@ -271,10 +271,11 @@ fun BrowseScreen(isSeries: Boolean) {
 
 @Composable
 fun PlaceholderShelf(title: String) {
+    val edge = com.nansu.tvnansu.ui.LocalEdge.current
     Column(Modifier.padding(bottom = 14.dp)) {
-        Text(title, style = Type.Section, color = Palette.TextDim, modifier = Modifier.padding(start = 48.dp, bottom = 16.dp))
+        Text(title, style = Type.Section, color = Palette.TextDim, modifier = Modifier.padding(start = edge, bottom = 16.dp))
         Row(
-            Modifier.padding(start = 48.dp, bottom = 40.dp),
+            Modifier.padding(start = edge, bottom = 40.dp),
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             repeat(7) {

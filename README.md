@@ -20,9 +20,12 @@ El archivo se sigue llamando `TVnansu.apk` para que la dirección de Downloader 
 
 ## Qué incluye
 
-- Inicio con carrusel de destacados, *Seguir viendo*, **En directo ahora** (deportes, eventos y noticias según la guía), canales recientes, Mi lista y novedades.
+- **Menú lateral** con iconos que se despliega al llegar a él.
+- **Inicio** en bloques: arriba el destacado (con **vista previa en directo** del partido o evento, sin sonido) y el panel *En directo ahora*; debajo, filas separadas de películas y series recomendadas y de deportes y noticias en directo, *Seguir viendo*, últimos canales, Mi lista.
+- **En vivo**: carrusel grande con el evento importante del momento, temas (Deportes, Noticias, Infantil, Cine y series, Documentales, Música), favoritos y últimos canales, y la guía completa con categorías, canales y programación.
+- **Capturas**: los últimos canales muestran la imagen de lo que estabas viendo y hace cuánto.
+- **Mosca de nansu tv** al 30 % en la esquina inferior izquierda, solo en canales en vivo (se puede quitar en Ajustes).
 - **Perfiles** con avatar de color: cada uno guarda su Seguir viendo, Mi lista, recientes, subtítulos y animaciones.
-- **En vivo**: categorías, lista de canales con lo que se emite ahora y ficha con la guía.
 - **Películas** y **Series** en filas por categoría, con fondo grande que cambia al moverte.
 - **Series por plataforma** (Netflix, HBO Max, Apple TV+, Disney+…), con página propia y subcategorías.
 - **Estudios, directores y listas** en Películas: Studio Ghibli, A24, Nolan, Almodóvar, Halloween en octubre, Navidad en diciembre, ganadoras del Óscar. El buscador también encuentra directores y estudios.

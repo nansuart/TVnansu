@@ -96,9 +96,9 @@ fun SearchScreen() {
     Row(
         Modifier
             .fillMaxSize()
-            .padding(top = 84.dp)
+            .padding(top = com.nansu.tvnansu.ui.LocalTopInset.current)
     ) {
-        Column(Modifier.padding(start = 48.dp, end = 24.dp)) {
+        Column(Modifier.padding(start = com.nansu.tvnansu.ui.LocalEdge.current, end = 24.dp)) {
             Box(
                 Modifier
                     .width(276.dp)
@@ -141,7 +141,8 @@ fun SearchScreen() {
                     color = Palette.TextDim,
                     modifier = Modifier.padding(top = 16.dp),
                 )
-                else -> PivotScroll(com.nansu.tvnansu.ui.components.ROW_TOP_MARGIN) {
+                else -> androidx.compose.runtime.CompositionLocalProvider(com.nansu.tvnansu.ui.LocalEdge provides 24.dp) {
+                PivotScroll(com.nansu.tvnansu.ui.components.ROW_TOP_MARGIN) {
                     LazyColumn(
                         state = rememberLazyListState(),
                         modifier = Modifier.fillMaxSize(),
@@ -212,6 +213,7 @@ fun SearchScreen() {
                             }
                         }
                     }
+                }
                 }
             }
         }

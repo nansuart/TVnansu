@@ -42,6 +42,16 @@ class Prefs(context: Context) {
         get() = sp.getInt("logo_style", 0)
         set(v) = sp.edit().putInt("logo_style", v).apply()
 
+    /** nansu tv watermark in the bottom-left corner, live TV only. */
+    var watermark: Boolean
+        get() = sp.getBoolean("watermark", true)
+        set(v) = sp.edit().putBoolean("watermark", v).apply()
+
+    /** Muted live preview of the featured channel on Home and En vivo. */
+    var livePreview: Boolean
+        get() = sp.getBoolean("live_preview", true)
+        set(v) = sp.edit().putBoolean("live_preview", v).apply()
+
     /** Hours between automatic refreshes of the playlist. 0 = never. */
     var autoRefreshHours: Int
         get() = sp.getInt("auto_refresh_hours", 24)

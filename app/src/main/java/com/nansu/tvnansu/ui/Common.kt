@@ -29,6 +29,12 @@ import java.util.Locale
 
 val LocalRepository = staticCompositionLocalOf<Repository> { error("Repository not provided") }
 
+/** Left margin of screen content: wider inside the main screen, where the side rail sits. */
+val LocalEdge = staticCompositionLocalOf { 48.dp }
+
+/** Space above the first element of a screen. */
+val LocalTopInset = staticCompositionLocalOf { 84.dp }
+
 fun Context.toast(message: String) {
     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
@@ -37,6 +43,23 @@ object Fmt {
     private val clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     fun clock(ms: Long): String = if (ms <= 0) "" else clockFormat.format(Date(ms))
+
+    private val longDateFormat = SimpleDateFormat("EEEE d 'de' MMMM", Locale("es", "ES"))
+
+    /** "miércoles 14 de octubre" */
+    fun longDate(ms: Long): String = longDateFormat.format(Date(ms))
+
+    /** "hace 12 min", "hace 3 h", "ayer". */
+    fun ago(ms: Long, now: Long = System.currentTimeMillis()): String {
+        val min = ((now - ms) / 60_000).coerceAtLeast(0)
+        return when {
+            min < 1 -> "ahora"
+            min < 60 -> "hace $min min"
+            min < 24 * 60 -> "hace ${min / 60} h"
+            min < 48 * 60 -> "ayer"
+            else -> "hace ${min / (24 * 60)} días"
+        }
+    }
 
     fun duration(ms: Long): String {
         val total = (ms / 1000).coerceAtLeast(0)

@@ -22,6 +22,18 @@ fun LogoFull(height: Dp = 56.dp, modifier: Modifier = Modifier) {
     )
 }
 
+/** The X mark alone, for the side rail. */
+@Composable
+fun LogoMark(size: Dp = 26.dp, modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(R.drawable.logo_mark),
+        contentDescription = "nansu tv",
+        modifier = modifier
+            .height(size)
+            .aspectRatio(1f),
+    )
+}
+
 /** Compact mark + "tv" pill, readable at small sizes (top bar). */
 @Composable
 fun LogoCompact(height: Dp = 30.dp, modifier: Modifier = Modifier) {
