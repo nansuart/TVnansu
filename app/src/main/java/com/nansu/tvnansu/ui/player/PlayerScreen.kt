@@ -382,7 +382,7 @@ fun PlayerScreen(request: PlayRequest) {
                 .align(Alignment.BottomStart)
                 .padding(start = 40.dp, bottom = 30.dp),
         ) {
-            LogoCompact(height = 24.dp, modifier = Modifier.graphicsLayer { alpha = 0.3f })
+            LogoCompact(height = 24.dp, white = true, modifier = Modifier.graphicsLayer { alpha = 0.3f })
         }
 
         AnimatedVisibility(

@@ -91,12 +91,17 @@ fun BrowseScreen(isSeries: Boolean) {
     val kind = if (isSeries) Kind.SERIES else Kind.MOVIE
     val prefix = if (isSeries) "s" else "m"
 
-    val categories by produceState<List<CategoryEntity>?>(null, pid, version, isSeries) {
-        value = repo.dao.categories(pid, kind.name)
+    // Kept in memory: coming back to Películas or Series shows the rows at once.
+    val catsKey = repo.memoKey("cats:${kind.name}", pid)
+    val recentKey = repo.memoKey("recent:${kind.name}", pid)
+    val categories by produceState(repo.peek<List<CategoryEntity>>(catsKey), pid, version, isSeries) {
+        value = repo.cached(catsKey) { repo.dao.categories(pid, kind.name) }
     }
-    val recent by produceState(emptyList<BrowseItem>(), pid, version, isSeries) {
-        value = if (isSeries) repo.dao.recentSeries(pid, ROW_LIMIT).distinctBy { it.remoteId }.map { it.toBrowse() }
-        else repo.dao.recentMovies(pid, ROW_LIMIT).distinctBy { it.remoteId }.map { it.toBrowse() }
+    val recent by produceState(repo.peek<List<BrowseItem>>(recentKey) ?: emptyList(), pid, version, isSeries) {
+        value = repo.cached(recentKey) {
+            if (isSeries) repo.dao.recentSeries(pid, ROW_LIMIT).distinctBy { it.remoteId }.map { it.toBrowse() }
+            else repo.dao.recentMovies(pid, ROW_LIMIT).distinctBy { it.remoteId }.map { it.toBrowse() }
+        }
     }
     val favoriteRefs by remember(pid) { repo.favorites(pid) }.collectAsState(initial = emptyList())
     val favorites = remember(favoriteRefs, kind) {
@@ -159,7 +164,7 @@ fun BrowseScreen(isSeries: Boolean) {
         MediaCard(
             title = item.title,
             image = item.poster,
-            width = 120.dp,
+            width = com.nansu.tvnansu.ui.components.POSTER_W,
             onClick = { open(item) },
             rating = item.rating,
             onLongClick = { toggleFav(item) },
@@ -189,7 +194,7 @@ fun BrowseScreen(isSeries: Boolean) {
                     items(list.take(ROW_LIMIT), key = { it.remoteId }) { Card(it, "pf:$name") }
                     item(key = "all") {
                         ViewAllCard(
-                            width = 120.dp,
+                            width = com.nansu.tvnansu.ui.components.POSTER_W,
                             onClick = { actions.openPlatform(name) },
                             modifier = Modifier.focusMemory("s:pf:$name:all", memory),
                         )
@@ -203,7 +208,7 @@ fun BrowseScreen(isSeries: Boolean) {
                     if (r.movies.size > ROW_LIMIT) {
                         item(key = "all") {
                             ViewAllCard(
-                                width = 120.dp,
+                                width = com.nansu.tvnansu.ui.components.POSTER_W,
                                 onClick = { actions.openGrid(Kind.MOVIE, COLLECTION_PREFIX + r.def.id, r.def.title) },
                                 modifier = Modifier.focusMemory("m:ls:${r.def.id}:all", memory),
                             )
@@ -243,10 +248,11 @@ fun BrowseScreen(isSeries: Boolean) {
             }
         }
         items(cats, key = { "cat:" + it.remoteId }) { cat ->
-            val loaded = rowCache[cat.remoteId]
+            val rowKey = repo.memoKey("row:${kind.name}:${cat.remoteId}", pid)
+            val loaded = rowCache[cat.remoteId] ?: repo.peek<List<BrowseItem>>(rowKey)
             LaunchedEffect(cat.remoteId, pid, version) {
                 if (rowCache[cat.remoteId] == null) {
-                    rowCache[cat.remoteId] = loadCategoryItems(repo, pid, isSeries, cat.remoteId, ROW_LIMIT)
+                    rowCache[cat.remoteId] = repo.cached(rowKey) { loadCategoryItems(repo, pid, isSeries, cat.remoteId, ROW_LIMIT) }
                 }
             }
             when {
@@ -257,7 +263,7 @@ fun BrowseScreen(isSeries: Boolean) {
                     if (loaded.size >= ROW_LIMIT) {
                         item(key = "all") {
                             ViewAllCard(
-                                width = 120.dp,
+                                width = com.nansu.tvnansu.ui.components.POSTER_W,
                                 onClick = { actions.openGrid(kind, cat.remoteId, cat.name) },
                                 modifier = Modifier.focusMemory("$prefix:${cat.remoteId}:all", memory),
                             )
@@ -281,7 +287,7 @@ fun PlaceholderShelf(title: String) {
             repeat(7) {
                 Box(
                     Modifier
-                        .width(120.dp)
+                        .width(com.nansu.tvnansu.ui.components.POSTER_W)
                         .aspectRatio(2f / 3f)
                         .clip(CardShape)
                         .background(Palette.Surface)
@@ -312,7 +318,7 @@ fun CollectionTile(
         scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.07f),
         border = androidx.tv.material3.ClickableSurfaceDefaults.border(
             focusedBorder = androidx.tv.material3.Border(
-                androidx.compose.foundation.BorderStroke(2.dp, Palette.Focus), shape = shape,
+                androidx.compose.foundation.BorderStroke(1.5.dp, Palette.Focus), shape = shape,
             ),
         ),
         colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(

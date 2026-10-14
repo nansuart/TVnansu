@@ -84,24 +84,9 @@ fun ChannelArt(
     Box(modifier) {
         if (capture != null) {
             CaptureImage(capture, Modifier.fillMaxSize())
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.7f)))
-            )
-            ChannelLogo(
-                url = channel.logo,
-                name = "",
-                showNameFallback = false,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-                    .size(width = logoWidth, height = logoWidth * 9f / 16f)
-                    .clip(RoundedCornerShape(5.dp)),
-            )
             if (showAge) {
                 Text(
-                    text = "CAPTURA · " + Fmt.ago(capture.takenAt).uppercase(),
+                    text = Fmt.ago(capture.takenAt).replaceFirstChar { it.uppercase() },
                     style = Type.Caption.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
                     modifier = Modifier
@@ -125,7 +110,7 @@ fun EventCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onFocused: () -> Unit = {},
-    width: Dp = 264.dp,
+    width: Dp = 228.dp,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
@@ -140,10 +125,11 @@ fun EventCard(
                 if (it.isFocused) onFocused()
             },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(BorderStroke(2.dp, Palette.Focus), shape = shape),
+            focusedBorder = Border(BorderStroke(1.5.dp, Palette.Focus), shape = shape),
         ),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = FocusGlow),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Palette.Surface,
             contentColor = Palette.Text,
@@ -164,11 +150,12 @@ fun EventCard(
                     url = event.channel.logo,
                     name = "",
                     showNameFallback = false,
+                    hideWhenMissing = true,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(12.dp)
-                        .size(width = 72.dp, height = 40.dp)
-                        .clip(RoundedCornerShape(7.dp)),
+                        .padding(10.dp)
+                        .size(width = 64.dp, height = 36.dp)
+                        .clip(RoundedCornerShape(6.dp)),
                 )
             }
             Box(
@@ -254,7 +241,7 @@ fun LiveNowRow(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(48.dp)
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onFocused()
@@ -278,8 +265,8 @@ fun LiveNowRow(
                 url = event.channel.logo,
                 name = event.channel.name.take(2).uppercase(),
                 modifier = Modifier
-                    .size(width = 60.dp, height = 34.dp)
-                    .clip(RoundedCornerShape(7.dp)),
+                    .size(width = 54.dp, height = 30.dp)
+                    .clip(RoundedCornerShape(6.dp)),
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

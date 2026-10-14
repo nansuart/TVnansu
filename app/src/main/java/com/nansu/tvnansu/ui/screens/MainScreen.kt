@@ -3,7 +3,11 @@ package com.nansu.tvnansu.ui.screens
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -11,7 +15,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -40,12 +45,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -55,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.nansu.tvnansu.data.SyncState
@@ -63,11 +72,14 @@ import com.nansu.tvnansu.ui.LocalEdge
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.LocalTopInset
 import com.nansu.tvnansu.ui.components.LineIcon
+import com.nansu.tvnansu.ui.components.LivePreviewHub
+import com.nansu.tvnansu.ui.components.LogoFull
 import com.nansu.tvnansu.ui.components.LogoMark
 import com.nansu.tvnansu.ui.components.NavIcon
 import com.nansu.tvnansu.ui.components.PillShape
 import com.nansu.tvnansu.ui.components.ProfileAvatar
 import com.nansu.tvnansu.ui.components.Spinner
+import com.nansu.tvnansu.ui.components.ThumbnailTour
 import com.nansu.tvnansu.ui.nav.Dest
 import com.nansu.tvnansu.ui.nav.LocalNavigator
 import com.nansu.tvnansu.ui.theme.Palette
@@ -87,9 +99,12 @@ enum class MainTab(val label: String, val icon: NavIcon) {
 /** Lets a screen inside Main jump to another section (e.g. Home → En vivo). */
 val LocalSelectTab = staticCompositionLocalOf<(MainTab) -> Unit> { {} }
 
-private val RAIL_CLOSED = 64.dp
-private val RAIL_OPEN = 232.dp
-private val CONTENT_EDGE = 96.dp
+/** Screens set it to true when they scroll down, so the section title slides away. */
+val LocalHeaderHidden = staticCompositionLocalOf<MutableState<Boolean>> { mutableStateOf(false) }
+
+private val RAIL_CLOSED = 56.dp
+private val RAIL_OPEN = 220.dp
+private val CONTENT_EDGE = 88.dp
 
 @Composable
 fun MainScreen() {
@@ -105,14 +120,20 @@ fun MainScreen() {
     val contentRequester = remember { FocusRequester() }
     val tabHolder = rememberSaveableStateHolder()
     val reduceMotion = repo.prefs.reduceMotion
+    val headerHidden = remember { mutableStateOf(false) }
 
-    // Switch content shortly after a rail item gains focus.
+    // Change section only once the user rests on a menu item (or presses OK), so
+    // scrolling through the menu doesn't load every screen on the way.
     LaunchedEffect(focusedTab) {
         if (focusedTab != tabIndex) {
-            delay(180)
+            delay(550)
             tabIndex = focusedTab
         }
     }
+    LaunchedEffect(tabIndex) { headerHidden.value = false }
+
+    // Previews stop while the menu is open.
+    LaunchedEffect(railHasFocus) { LivePreviewHub.paused.value = railHasFocus }
 
     // First launch: start inside Home's content, not on the rail.
     LaunchedEffect(Unit) {
@@ -160,10 +181,19 @@ fun MainScreen() {
     val selectTabFn = remember { { t: MainTab -> selectTab(t) } }
     val tab = MainTab.entries[tabIndex]
     Box(Modifier.fillMaxSize()) {
+        // Background thumbnail refresh, tucked under the menu.
+        Box(Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp)) {
+            ThumbnailTour(
+                enabled = repo.prefs.livePreview && repo.prefs.autoThumbs,
+                candidates = { repo.thumbnailCandidates(repo.activeId.value) },
+            )
+        }
+
         CompositionLocalProvider(
             LocalEdge provides CONTENT_EDGE,
-            LocalTopInset provides 64.dp,
+            LocalTopInset provides 60.dp,
             LocalSelectTab provides selectTabFn,
+            LocalHeaderHidden provides headerHidden,
         ) {
             Box(
                 Modifier
@@ -185,24 +215,36 @@ fun MainScreen() {
             }
         }
 
+        // Section title and clock; slides up out of the way once the screen scrolls.
+        val hidden = headerHidden.value
+        val headerShift by animateFloatAsState(if (hidden) 1f else 0f, tween(if (reduceMotion) 0 else 280), label = "hdr")
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(72.dp)
-                .background(
-                    Brush.verticalGradient(
-                        0f to Palette.Bg.copy(alpha = 0.92f),
-                        0.6f to Palette.Bg.copy(alpha = 0.6f),
-                        1f to Color.Transparent,
+                .graphicsLayer {
+                    alpha = 1f - headerShift
+                    translationY = -headerShift * 40.dp.toPx()
+                }
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(68.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Palette.Bg.copy(alpha = 0.85f),
+                            0.6f to Palette.Bg.copy(alpha = 0.45f),
+                            1f to Color.Transparent,
+                        )
                     )
-                )
-        )
-        Header(
-            title = tab.label,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = CONTENT_EDGE, end = 40.dp, top = 20.dp),
-        )
+            )
+            Header(
+                title = tab.label,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = CONTENT_EDGE, end = 36.dp, top = 18.dp),
+            )
+        }
 
         SideRail(
             current = tabIndex,
@@ -235,9 +277,10 @@ private fun SideRail(
     val nav = LocalNavigator.current
     val width by animateDpAsState(
         targetValue = if (open) RAIL_OPEN else RAIL_CLOSED,
-        animationSpec = tween(if (reduceMotion) 0 else 320),
+        animationSpec = tween(if (reduceMotion) 0 else 320, easing = FastOutSlowInEasing),
         label = "rail",
     )
+    val shade by animateFloatAsState(if (open) 1f else 0f, tween(if (reduceMotion) 0 else 320), label = "shade")
     val profileId by repo.profileId.collectAsState()
     val profiles by repo.profiles.collectAsState(initial = emptyList())
     val profile = profiles.firstOrNull { it.id == profileId }
@@ -245,15 +288,11 @@ private fun SideRail(
     Box(
         Modifier
             .fillMaxHeight()
-            .width(if (open) RAIL_OPEN + 120.dp else RAIL_CLOSED + 40.dp)
+            .width(RAIL_CLOSED + 36.dp + (RAIL_OPEN + 84.dp - RAIL_CLOSED - 36.dp) * shade)
             .background(
-                if (open) Brush.horizontalGradient(
-                    0f to Color(0xF70C0C10),
-                    0.66f to Color(0xF70C0C10),
-                    1f to Color.Transparent,
-                ) else Brush.horizontalGradient(
-                    0f to Palette.Bg,
-                    0.45f to Palette.Bg.copy(alpha = 0.75f),
+                Brush.horizontalGradient(
+                    0f to Color(0xFF0B0B0E).copy(alpha = 0.92f + 0.05f * shade),
+                    (0.42f + 0.25f * shade) to Color(0xFF0B0B0E).copy(alpha = 0.55f + 0.42f * shade),
                     1f to Color.Transparent,
                 )
             )
@@ -262,7 +301,7 @@ private fun SideRail(
             Modifier
                 .fillMaxHeight()
                 .width(width)
-                .padding(vertical = 26.dp)
+                .padding(vertical = 22.dp)
                 .onFocusChanged { onFocusChanged(it.hasFocus) }
                 .onPreviewKeyEvent { ev ->
                     if (ev.type == KeyEventType.KeyDown && ev.key == Key.DirectionRight) {
@@ -273,9 +312,7 @@ private fun SideRail(
                 .focusRestorer()
                 .focusGroup(),
         ) {
-            Box(Modifier.padding(start = 19.dp, bottom = 34.dp)) {
-                LogoMark(size = 26.dp)
-            }
+            RailLogo(open = open, reduceMotion = reduceMotion, modifier = Modifier.padding(start = 16.dp, bottom = 30.dp))
             MainTab.entries.forEachIndexed { i, t ->
                 RailItem(
                     label = t.label,
@@ -285,8 +322,8 @@ private fun SideRail(
                         .focusRequester(requesters[i])
                         .onFocusChanged { if (it.isFocused) onFocusTab(i) },
                     onClick = { onClickTab(i) },
-                ) { color -> LineIcon(t.icon, color, size = 22.dp) }
-                Spacer(Modifier.height(6.dp))
+                ) { color -> LineIcon(t.icon, color, size = 20.dp) }
+                Spacer(Modifier.height(4.dp))
             }
             Spacer(Modifier.weight(1f))
             if (profile != null) {
@@ -295,8 +332,62 @@ private fun SideRail(
                     selected = false,
                     open = open,
                     onClick = { nav.push(Dest.Profiles) },
-                ) { _ -> ProfileAvatar(profile.name, profile.avatar, 26.dp) }
+                ) { _ -> ProfileAvatar(profile.name, profile.avatar, 22.dp) }
             }
+        }
+    }
+}
+
+/**
+ * The X when the menu is closed, the full "nansu tv" logo when it opens. The X
+ * winds up a few degrees, turns a quarter with a soft overshoot and gives way to
+ * the wordmark, which wipes in from the left. Closing plays it back, quicker.
+ */
+@Composable
+private fun RailLogo(open: Boolean, reduceMotion: Boolean, modifier: Modifier = Modifier) {
+    val rotation = remember { Animatable(0f) }
+    val reveal by animateFloatAsState(
+        targetValue = if (open) 1f else 0f,
+        animationSpec = if (reduceMotion) tween(0) else tween(
+            durationMillis = if (open) 420 else 260,
+            delayMillis = if (open) 140 else 0,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "reveal",
+    )
+    LaunchedEffect(open) {
+        if (reduceMotion) return@LaunchedEffect
+        val base = Math.round(rotation.value / 90f) * 90f
+        if (open) {
+            rotation.animateTo(base - 16f, tween(150, easing = FastOutSlowInEasing))
+            rotation.animateTo(base + 90f, spring(dampingRatio = 0.5f, stiffness = 300f))
+        } else {
+            rotation.animateTo(base + 10f, tween(110, easing = FastOutSlowInEasing))
+            rotation.animateTo(base - 90f, spring(dampingRatio = 0.62f, stiffness = 420f))
+        }
+    }
+    Box(modifier.height(26.dp), contentAlignment = Alignment.CenterStart) {
+        // X: fades and shrinks only in the second half, so the turn is seen.
+        val xFade = ((reveal - 0.35f) / 0.65f).coerceIn(0f, 1f)
+        LogoMark(
+            size = 24.dp,
+            modifier = Modifier.graphicsLayer {
+                rotationZ = rotation.value
+                alpha = 1f - xFade
+                scaleX = 1f - 0.35f * xFade
+                scaleY = 1f - 0.35f * xFade
+            },
+        )
+        if (reveal > 0.01f) {
+            LogoFull(
+                height = 21.dp,
+                modifier = Modifier
+                    .offset(x = (-10).dp * (1f - reveal))
+                    .graphicsLayer { alpha = reveal.coerceIn(0f, 1f) }
+                    .drawWithContent {
+                        clipRect(right = size.width * reveal) { this@drawWithContent.drawContent() }
+                    },
+            )
         }
     }
 }
@@ -311,13 +402,13 @@ private fun RailItem(
     icon: @Composable (Color) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    Box(Modifier.padding(horizontal = 10.dp)) {
+    Box(Modifier.padding(horizontal = 8.dp)) {
         // Accent mark on the current section.
         if (selected && !focused) {
             Box(
                 Modifier
-                    .padding(top = 12.dp)
-                    .size(width = 3.dp, height = 20.dp)
+                    .padding(top = 10.dp)
+                    .size(width = 3.dp, height = 18.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(Palette.Accent)
             )
@@ -325,35 +416,31 @@ private fun RailItem(
         Surface(
             onClick = onClick,
             modifier = modifier
-                .padding(start = 0.dp)
                 .fillMaxWidth()
-                .height(44.dp)
-                .onFocusChanged { focused = it.isFocused },
+                .height(38.dp)
+                .onFocusChanged { focused = it.isFocused || it.hasFocus },
             shape = ClickableSurfaceDefaults.shape(shape = PillShape),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = Color.Transparent,
                 contentColor = if (selected) Palette.Text else Palette.TextDim,
                 focusedContainerColor = Palette.Focus,
-                focusedContentColor = Color.Black,
+                focusedContentColor = Color(0xFF0B0B0E),
             ),
         ) {
-            val color = when {
-                focused -> Color.Black
-                selected -> Palette.Text
-                else -> Palette.TextDim
-            }
+            // The surface itself says which colour to use, so text is never white on white.
+            val color = LocalContentColor.current
             Row(
                 Modifier
                     .fillMaxSize()
-                    .padding(start = 11.dp),
+                    .padding(start = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 icon(color)
                 AnimatedVisibility(
                     visible = open,
-                    enter = fadeIn(tween(220, delayMillis = 80)) + slideInHorizontally { -it / 4 },
-                    exit = fadeOut(tween(120)) + slideOutHorizontally { -it / 4 },
+                    enter = fadeIn(tween(220, delayMillis = 90)) + slideInHorizontally(tween(260, delayMillis = 60)) { -it / 4 },
+                    exit = fadeOut(tween(110)) + slideOutHorizontally(tween(140)) { -it / 4 },
                 ) {
                     Text(
                         text = label,
@@ -361,7 +448,7 @@ private fun RailItem(
                         color = color,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 18.dp, end = 12.dp),
+                        modifier = Modifier.padding(start = 16.dp, end = 10.dp),
                     )
                 }
             }
@@ -383,7 +470,7 @@ private fun Header(title: String, modifier: Modifier = Modifier) {
     }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(title, style = Type.Title, color = Palette.Text)
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(12.dp))
         Text(Fmt.longDate(now), style = Type.Label, color = Palette.TextFaint)
         Spacer(Modifier.weight(1f))
         val running = (sync as? SyncState.Running)?.message ?: (epg as? SyncState.Running)?.message
@@ -391,7 +478,7 @@ private fun Header(title: String, modifier: Modifier = Modifier) {
             Spinner(size = 14)
             Spacer(Modifier.width(8.dp))
             Text(running, style = Type.Caption, color = Palette.TextDim, maxLines = 1)
-            Spacer(Modifier.width(18.dp))
+            Spacer(Modifier.width(16.dp))
         }
         Text(Fmt.clock(now), style = Type.Title, color = Palette.Text)
     }

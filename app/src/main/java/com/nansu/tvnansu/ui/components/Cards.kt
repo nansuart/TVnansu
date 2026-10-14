@@ -39,6 +39,12 @@ import com.nansu.tvnansu.ui.theme.Type
 
 val CardShape = RoundedCornerShape(10.dp)
 
+/** Width of a poster card in rows (2:3). */
+val POSTER_W = 106.dp
+
+/** Lift for focused cards: a soft shadow under the thin white border. */
+val FocusGlow = androidx.tv.material3.Glow(elevationColor = Color.Black.copy(alpha = 0.7f), elevation = 14.dp)
+
 /**
  * Artwork on a soft gradient. The title is shown only while there is no image
  * (missing or failed URL), so transparent logos never sit on top of text.
@@ -129,7 +135,7 @@ fun MediaCard(
     image: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = 132.dp,
+    width: Dp = POSTER_W,
     aspectRatio: Float = 2f / 3f,
     subtitle: String? = null,
     progress: Float? = null,
@@ -155,10 +161,11 @@ fun MediaCard(
                     if (it.isFocused) onFocused()
                 },
             shape = ClickableSurfaceDefaults.shape(shape = CardShape),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
             border = ClickableSurfaceDefaults.border(
-                focusedBorder = Border(border = BorderStroke(2.dp, Palette.Focus), shape = CardShape)
+                focusedBorder = Border(border = BorderStroke(1.5.dp, Palette.Focus), shape = CardShape)
             ),
+            glow = ClickableSurfaceDefaults.glow(focusedGlow = FocusGlow),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = Palette.Surface,
                 contentColor = Palette.Text,
@@ -235,7 +242,7 @@ fun MediaCard(
 fun ViewAllCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = 132.dp,
+    width: Dp = POSTER_W,
     aspectRatio: Float = 2f / 3f,
 ) {
     Column(Modifier.width(width)) {

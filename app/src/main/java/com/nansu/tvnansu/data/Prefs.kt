@@ -52,6 +52,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("live_preview", true)
         set(v) = sp.edit().putBoolean("live_preview", v).apply()
 
+    /** Refresh channel thumbnails in the background while the user is idle. */
+    var autoThumbs: Boolean
+        get() = sp.getBoolean("auto_thumbs", true)
+        set(v) = sp.edit().putBoolean("auto_thumbs", v).apply()
+
     /** Hours between automatic refreshes of the playlist. 0 = never. */
     var autoRefreshHours: Int
         get() = sp.getInt("auto_refresh_hours", 24)

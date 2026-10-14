@@ -23,7 +23,7 @@ El archivo se sigue llamando `TVnansu.apk` para que la dirección de Downloader 
 - **Menú lateral** con iconos que se despliega al llegar a él.
 - **Inicio** en bloques: arriba el destacado (con **vista previa en directo** del partido o evento, sin sonido) y el panel *En directo ahora*; debajo, filas separadas de películas y series recomendadas y de deportes y noticias en directo, *Seguir viendo*, últimos canales, Mi lista.
 - **En vivo**: carrusel grande con el evento importante del momento, temas (Deportes, Noticias, Infantil, Cine y series, Documentales, Música), favoritos y últimos canales, y la guía completa con categorías, canales y programación.
-- **Capturas**: los últimos canales muestran la imagen de lo que estabas viendo y hace cuánto.
+- **Miniaturas de canales**: los últimos canales y los directos muestran una imagen de lo que emiten y hace cuánto se tomó. Se guardan al verlos, desde la vista previa y, si dejas la tele quieta en Inicio o En vivo, abriéndolos uno a uno unos segundos sin sonido (se puede desactivar en Ajustes).
 - **Mosca de nansu tv** al 30 % en la esquina inferior izquierda, solo en canales en vivo (se puede quitar en Ajustes).
 - **Perfiles** con avatar de color: cada uno guarda su Seguir viendo, Mi lista, recientes, subtítulos y animaciones.
 - **Películas** y **Series** en filas por categoría, con fondo grande que cambia al moverte.

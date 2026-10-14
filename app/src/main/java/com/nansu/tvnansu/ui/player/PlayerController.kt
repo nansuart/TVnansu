@@ -28,6 +28,7 @@ import com.nansu.tvnansu.data.PlayItem
 import com.nansu.tvnansu.data.Repository
 import com.nansu.tvnansu.data.db.Kind
 import com.nansu.tvnansu.data.remote.USER_AGENT
+import com.nansu.tvnansu.ui.components.LivePreviewHub
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -148,7 +149,9 @@ class PlayerController(
         })
 
         player.playWhenReady = true
-        load(startPositionMs)
+        // Give the provider a moment to free the preview's connection before opening ours.
+        val wait = 700 - LivePreviewHub.msSinceRelease()
+        if (wait > 0) uiScope.launch { delay(wait); load(startPositionMs) } else load(startPositionMs)
 
         tickerJob = uiScope.launch {
             while (isActive) {

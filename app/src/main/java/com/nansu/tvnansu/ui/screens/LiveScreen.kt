@@ -329,7 +329,7 @@ private fun ChannelRow(
             focusedContentColor = Palette.Text,
         ),
         border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(BorderStroke(2.dp, Palette.Focus), shape = RoundedCornerShape(12.dp))
+            focusedBorder = Border(BorderStroke(1.5.dp, Palette.Focus), shape = RoundedCornerShape(12.dp))
         ),
     ) {
         Row(

@@ -23,11 +23,11 @@ object Palette {
 }
 
 object Type {
-    val Display = TextStyle(fontSize = 36.sp, fontWeight = FontWeight.Bold, lineHeight = 42.sp, letterSpacing = (-0.5).sp)
-    val Title = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, lineHeight = 30.sp)
-    val Section = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp)
-    val Body = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Normal, lineHeight = 22.sp)
-    val Label = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp)
+    val Display = TextStyle(fontSize = 32.sp, fontWeight = FontWeight.Bold, lineHeight = 37.sp, letterSpacing = (-0.5).sp)
+    val Title = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.SemiBold, lineHeight = 26.sp)
+    val Section = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
+    val Body = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Normal, lineHeight = 20.sp)
+    val Label = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.Medium, lineHeight = 17.sp)
     val Caption = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal, lineHeight = 16.sp)
 }
 

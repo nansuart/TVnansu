@@ -36,9 +36,9 @@ fun LogoMark(size: Dp = 26.dp, modifier: Modifier = Modifier) {
 
 /** Compact mark + "tv" pill, readable at small sizes (top bar). */
 @Composable
-fun LogoCompact(height: Dp = 30.dp, modifier: Modifier = Modifier) {
+fun LogoCompact(height: Dp = 30.dp, modifier: Modifier = Modifier, white: Boolean = false) {
     Image(
-        painter = painterResource(R.drawable.logo_compact),
+        painter = painterResource(if (white) R.drawable.logo_compact_white else R.drawable.logo_compact),
         contentDescription = "nansu tv",
         modifier = modifier
             .height(height)

@@ -287,6 +287,7 @@ fun SettingsScreen() {
     var logoStyle by remember { mutableIntStateOf(repo.prefs.logoStyle) }
     var watermark by remember { mutableStateOf(repo.prefs.watermark) }
     var livePreview by remember { mutableStateOf(repo.prefs.livePreview) }
+    var autoThumbs by remember { mutableStateOf(repo.prefs.autoThumbs) }
 
     Column(
         Modifier
@@ -431,6 +432,20 @@ fun SettingsScreen() {
                 onSelect = {
                     livePreview = it == 1
                     repo.prefs.livePreview = livePreview
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        SettingRow(
+            title = "Miniaturas automáticas de canales",
+            description = "Cuando dejas la tele quieta en Inicio o En vivo, se abren uno a uno tus últimos canales y los directos destacados unos segundos, sin sonido, para guardar una imagen de lo que emiten. Se detiene al pulsar cualquier botón. Necesita la vista previa activada.",
+        ) {
+            Segmented(
+                options = listOf("No", "Sí"),
+                selected = if (autoThumbs) 1 else 0,
+                onSelect = {
+                    autoThumbs = it == 1
+                    repo.prefs.autoThumbs = autoThumbs
                 },
             )
         }

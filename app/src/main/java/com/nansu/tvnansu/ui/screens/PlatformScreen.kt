@@ -60,7 +60,7 @@ fun PlatformScreen(name: String) {
                     MediaCard(
                         title = item.title,
                         image = item.poster,
-                        width = 120.dp,
+                        width = com.nansu.tvnansu.ui.components.POSTER_W,
                         rating = item.rating,
                         onClick = { actions.openSeries(item.remoteId) },
                         onLongClick = { actions.toggleFavorite(Kind.SERIES, item.remoteId, item.title, item.poster) },
@@ -71,7 +71,7 @@ fun PlatformScreen(name: String) {
                 if (title.startsWith("Novedades")) {
                     item(key = "all") {
                         ViewAllCard(
-                            width = 120.dp,
+                            width = com.nansu.tvnansu.ui.components.POSTER_W,
                             onClick = { actions.openGrid(Kind.SERIES, PLATFORM_PREFIX + name, name) },
                             modifier = Modifier.focusMemory("pf:all", memory),
                         )

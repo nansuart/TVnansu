@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
@@ -276,27 +277,28 @@ fun Segmented(
     }
 }
 
+/**
+ * Loading indicator: the nansu X turning a quarter at a time, with a small wind-up
+ * before each turn and a soft overshoot at the end, then a short rest.
+ */
 @Composable
 fun Spinner(modifier: Modifier = Modifier, size: Int = 36) {
-    val transition = rememberInfiniteTransition(label = "spin")
-    val angle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
-        label = "angle",
-    )
-    Canvas(modifier.size(size.dp)) {
-        drawArc(
-            color = Color.White.copy(alpha = 0.15f),
-            startAngle = 0f, sweepAngle = 360f, useCenter = false,
-            style = Stroke(width = 4.dp.toPx()),
-        )
-        drawArc(
-            color = Palette.Accent,
-            startAngle = angle, sweepAngle = 90f, useCenter = false,
-            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round),
-        )
+    val rotation = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val base = rotation.value
+            rotation.animateTo(base - 14f, tween(170, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            rotation.animateTo(
+                base + 90f,
+                androidx.compose.animation.core.spring(dampingRatio = 0.52f, stiffness = 320f),
+            )
+            delay(240)
+        }
     }
+    LogoMark(
+        size = size.dp,
+        modifier = modifier.graphicsLayer { rotationZ = rotation.value },
+    )
 }
 
 @Composable

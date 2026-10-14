@@ -185,7 +185,7 @@ fun SearchScreen() {
                                         MediaCard(
                                             title = cleanTitle(m.name),
                                             image = m.poster,
-                                            width = 110.dp,
+                                            width = 98.dp,
                                             rating = m.rating,
                                             onClick = { actions.openMovie(m) },
                                             onLongClick = { actions.toggleFavorite(Kind.MOVIE, m.remoteId, m.name, m.poster) },
@@ -202,7 +202,7 @@ fun SearchScreen() {
                                         MediaCard(
                                             title = cleanTitle(s.name),
                                             image = s.poster,
-                                            width = 110.dp,
+                                            width = 98.dp,
                                             rating = s.rating,
                                             onClick = { actions.openSeries(s) },
                                             onLongClick = { actions.toggleFavorite(Kind.SERIES, s.remoteId, s.name, s.poster) },

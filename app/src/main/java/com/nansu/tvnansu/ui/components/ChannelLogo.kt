@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -171,6 +172,7 @@ fun ChannelLogo(
     name: String,
     modifier: Modifier = Modifier,
     showNameFallback: Boolean = true,
+    hideWhenMissing: Boolean = false,
 ) {
     val style = LocalRepository.current.prefs.logoStyle
     val context = LocalPlatformContext.current
@@ -182,8 +184,13 @@ fun ChannelLogo(
             .transformations(LogoTileTransformation(style))
             .build()
     }
-    Box(modifier.background(Palette.Surface2), contentAlignment = Alignment.Center) {
-        if (!loaded && showNameFallback) {
+    // Without a logo, either the channel name on a plate or nothing at all (no empty grey box).
+    if (hideWhenMissing && url.isNullOrBlank()) return
+    Box(
+        modifier.background(if (loaded || !hideWhenMissing) Palette.Surface2 else Color.Transparent),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!loaded && showNameFallback && !hideWhenMissing) {
             Text(
                 text = name,
                 style = Type.Label,

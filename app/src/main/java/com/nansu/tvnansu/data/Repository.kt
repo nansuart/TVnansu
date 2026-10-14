@@ -71,6 +71,37 @@ class Repository(
     private var platformJob: Job? = null
     val collections = Collections(dao, http, prefs)
     val captures = Captures()
+
+    // Results kept in memory so a screen shows instantly when the user comes back to it.
+    private val memo = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Any?>>()
+
+    @Suppress("UNCHECKED_CAST")
+    fun <T> peek(key: String): T? = memo[key]?.second as T?
+
+    @Suppress("UNCHECKED_CAST")
+    suspend fun <T> cached(key: String, ttlMs: Long = Long.MAX_VALUE, block: suspend () -> T): T {
+        memo[key]?.let { (at, v) -> if (System.currentTimeMillis() - at < ttlMs) return v as T }
+        val v = block()
+        memo[key] = System.currentTimeMillis() to v
+        return v
+    }
+
+    fun store(key: String, value: Any?) {
+        memo[key] = System.currentTimeMillis() to value
+    }
+
+    /** Key that changes when the catalogue, the guide or the profile changes. */
+    fun memoKey(name: String, pid: Long) = "$name:$pid:${profileId.value}:${dataVersion.value}:${epgVersion.value}"
+
+    /** What is on now, computed at most once a minute and shared by Inicio and En vivo. */
+    suspend fun liveNowShared(pid: Long): List<LiveEvent> = cached(memoKey("live", pid), 60_000) { liveNow(pid, 24) }
+
+    /** Channels whose thumbnail is worth refreshing in the background: recent ones and what is on now. */
+    suspend fun thumbnailCandidates(pid: Long): List<ChannelEntity> {
+        val recent = channelsByIds(pid, recentsOf(pid, 10).map { it.remoteId })
+        val live = liveNowShared(pid).take(10).map { it.channel }
+        return (recent + live).distinctBy { it.remoteId }
+    }
     private val seriesCache = LruCache<String, SeriesDetails>(24)
     private val shortEpgCache = LruCache<String, Pair<Long, List<XtreamApi.ShortEpg>>>(200)
 

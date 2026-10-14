@@ -99,6 +99,27 @@ fun Modifier.focusMemory(key: String, memory: MutableState<String?>): Modifier =
 }
 
 /**
+ * Vertical scrolling for screens with a large block on top: nothing moves while the
+ * focused item is already fully on screen; otherwise it is brought to [top] from the
+ * top edge. The top block itself scrolls back to the very start (see the screens).
+ */
+@Composable
+fun RevealScroll(top: Dp, bottom: Dp = 28.dp, content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    val topPx = with(density) { top.toPx() }
+    val bottomPx = with(density) { bottom.toPx() }
+    val spec = remember(topPx, bottomPx) {
+        object : BringIntoViewSpec {
+            override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+                if (offset >= topPx && offset + size <= containerSize - bottomPx) return 0f
+                return if (size > containerSize - topPx) offset else offset - topPx
+            }
+        }
+    }
+    CompositionLocalProvider(LocalBringIntoViewSpec provides spec) { content() }
+}
+
+/**
  * Keeps the focused child of a scrolling list at a fixed offset from the start,
  * the way Apple TV and Google TV rows move.
  */

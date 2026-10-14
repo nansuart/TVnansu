@@ -38,6 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -75,7 +77,10 @@ import com.nansu.tvnansu.ui.Fmt
 import com.nansu.tvnansu.ui.LocalEdge
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.LocalTopInset
-import com.nansu.tvnansu.ui.PivotScroll
+import com.nansu.tvnansu.ui.RevealScroll
+import com.nansu.tvnansu.ui.components.Skeleton
+import com.nansu.tvnansu.ui.components.SkeletonShelf
+import kotlinx.coroutines.launch
 import com.nansu.tvnansu.ui.components.CaptureImage
 import com.nansu.tvnansu.ui.components.ChannelArt
 import com.nansu.tvnansu.ui.components.ChannelLogo
@@ -163,30 +168,43 @@ fun HomeScreen() {
     val repo = LocalRepository.current
     val actions = rememberActions()
     val memory = rememberFocusMemory()
-    val selectTab = LocalSelectTab.current
     val pid by repo.activeId.collectAsState()
     val version by repo.dataVersion.collectAsState()
     val edge = LocalEdge.current
     val reduceMotion = repo.prefs.reduceMotion
     val previewOn = repo.prefs.livePreview
+    val headerHidden = LocalHeaderHidden.current
+    val scope = rememberCoroutineScope()
 
-    val continueList by remember(pid) { repo.continueWatching(pid) }.collectAsState(initial = emptyList())
-    val favorites by remember(pid) { repo.favorites(pid) }.collectAsState(initial = emptyList())
+    // Everything below starts from what was shown last time (kept in memory), so
+    // coming back to Inicio is instant; fresh data replaces it when it arrives.
+    val continueList by remember(pid) { repo.continueWatching(pid) }
+        .collectAsState(initial = repo.peek("cw:$pid") ?: emptyList())
+    val favorites by remember(pid) { repo.favorites(pid) }
+        .collectAsState(initial = repo.peek("fav:$pid") ?: emptyList())
     val recentRefs by remember(pid) { repo.recentChannels(pid) }.collectAsState(initial = emptyList())
+    LaunchedEffect(continueList) { repo.store("cw:$pid", continueList) }
+    LaunchedEffect(favorites) { repo.store("fav:$pid", favorites) }
 
-    val recentChannels by produceState(emptyList<ChannelEntity>(), pid, recentRefs, version) {
+    val recentChannels by produceState(repo.peek<List<ChannelEntity>>("home:recent:$pid") ?: emptyList(), pid, recentRefs, version) {
+        if (recentRefs.isEmpty() && value.isNotEmpty()) return@produceState
         value = repo.channelsByIds(pid, recentRefs.map { it.remoteId }.distinct())
+        repo.store("home:recent:$pid", value)
     }
     val favoriteChannels by produceState(emptyList<ChannelEntity>(), pid, favorites, version) {
         value = repo.channelsByIds(pid, favorites.filter { it.kind == Kind.LIVE.name }.map { it.remoteId }.distinct())
     }
-    val moviesOrNull by produceState<List<MovieEntity>?>(null, pid, version) { value = repo.recommendedMovies(pid) }
-    val seriesOrNull by produceState<List<SeriesEntity>?>(null, pid, version) { value = repo.recommendedSeries(pid) }
+    val moviesOrNull by produceState(repo.peek<List<MovieEntity>>(repo.memoKey("recm", pid)), pid, version) {
+        value = repo.cached(repo.memoKey("recm", pid)) { repo.recommendedMovies(pid) }
+    }
+    val seriesOrNull by produceState(repo.peek<List<SeriesEntity>>(repo.memoKey("recs", pid)), pid, version) {
+        value = repo.cached(repo.memoKey("recs", pid)) { repo.recommendedSeries(pid) }
+    }
     val movies = moviesOrNull ?: emptyList()
     val series = seriesOrNull ?: emptyList()
     val myList = favorites.filter { it.kind == Kind.MOVIE.name || it.kind == Kind.SERIES.name }
 
-    // Live sports, events and news from the guide, refreshed every minute.
+    // Live sports, events and news from the guide (shared with En vivo, refreshed every minute).
     val epgVersion by repo.epgVersion.collectAsState()
     var minuteTick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) {
@@ -195,8 +213,8 @@ fun HomeScreen() {
             minuteTick++
         }
     }
-    val liveEvents by produceState(emptyList<LiveEvent>(), pid, version, epgVersion, minuteTick) {
-        value = repo.liveNow(pid)
+    val liveEvents by produceState(repo.peek<List<LiveEvent>>(repo.memoKey("live", pid)) ?: emptyList(), pid, version, epgVersion, minuteTick) {
+        value = repo.liveNowShared(pid)
     }
     val sports = liveEvents.filter { it.label != "NOTICIAS" }
     val news = liveEvents.filter { it.label == "NOTICIAS" }
@@ -205,7 +223,8 @@ fun HomeScreen() {
     var backdropTick by remember { mutableIntStateOf(0) }
     val leadEvent = sports.firstOrNull() ?: news.firstOrNull()
     val secondEvent = (if (sports.size > 1) sports[1] else news.firstOrNull())?.takeIf { it != leadEvent }
-    val slides by produceState(emptyList<Slide>(), pid, version, backdropTick, leadEvent?.channel?.remoteId, secondEvent?.channel?.remoteId) {
+    val slidesKey = repo.memoKey("slides", pid)
+    val slides by produceState(repo.peek<List<Slide>>(slidesKey) ?: emptyList(), pid, version, backdropTick, leadEvent?.channel?.remoteId, secondEvent?.channel?.remoteId) {
         val ms = repo.dao.recentMovies(pid, 6).distinctBy { it.remoteId }
         val ss = repo.dao.recentSeries(pid, 6).distinctBy { it.remoteId }
         val vod = ArrayList<Slide>()
@@ -217,6 +236,7 @@ fun HomeScreen() {
         leadEvent?.let { sorted.add(0, eventSlide(it)) }
         secondEvent?.let { sorted.add(minOf(3, sorted.size), eventSlide(it)) }
         value = sorted
+        repo.store(slidesKey, sorted)
         if (backdropTick == 0 && repo.prefetchBackdrops(ms.take(6))) backdropTick++
     }
     var slideIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -228,9 +248,10 @@ fun HomeScreen() {
         slideIndex = (slideIndex + 1) % slides.size
     }
 
+    val loading = moviesOrNull == null || seriesOrNull == null
     val nothing = continueList.isEmpty() && recentChannels.isEmpty() && movies.isEmpty() &&
         series.isEmpty() && myList.isEmpty() && favoriteChannels.isEmpty() && liveEvents.isEmpty()
-    if (nothing && moviesOrNull != null && seriesOrNull != null) {
+    if (nothing && !loading) {
         EmptyState(
             title = "Todavía no hay nada aquí",
             message = "Explora En vivo, Películas o Series. Lo que veas aparecerá en Inicio.",
@@ -250,9 +271,13 @@ fun HomeScreen() {
         }
     }
 
-    PivotScroll(76.dp) {
+    val listState = rememberLazyListState()
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 } }
+    LaunchedEffect(scrolled) { headerHidden.value = scrolled }
+
+    RevealScroll(top = 40.dp) {
         LazyColumn(
-            state = rememberLazyListState(),
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 72.dp),
         ) {
@@ -260,29 +285,40 @@ fun HomeScreen() {
                 val shown = pinned ?: slides.getOrNull(slideIndex % slides.size.coerceAtLeast(1))
                 Row(
                     Modifier
-                        .padding(start = edge, end = 40.dp, bottom = 22.dp)
+                        .padding(start = edge, end = 36.dp, bottom = 20.dp)
                         .fillMaxWidth()
-                        .height(286.dp)
+                        .height(256.dp)
+                        // The whole block always comes fully into view.
+                        .onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } }
                 ) {
-                    FeaturedBlock(
-                        slide = shown,
-                        index = slideIndex % slides.size.coerceAtLeast(1),
-                        count = slides.size,
-                        pinned = pinned != null,
-                        reduceMotion = reduceMotion,
-                        previewOn = previewOn,
-                        onMove = { d -> if (slides.isNotEmpty()) slideIndex = (slideIndex + d + slides.size) % slides.size },
-                        onOpen = { shown?.let { openSlide(it) } },
-                        onLongClick = {
-                            val s = shown ?: return@FeaturedBlock
-                            if (s.kind != Kind.LIVE) actions.toggleFavorite(s.kind, s.remoteId, s.title, s.poster)
-                        },
-                        memory = memory,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                    )
-                    Spacer(Modifier.width(18.dp))
+                    if (shown == null && slides.isEmpty()) {
+                        Skeleton(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            RoundedCornerShape(20.dp),
+                        )
+                    } else {
+                        FeaturedBlock(
+                            slide = shown,
+                            index = slideIndex % slides.size.coerceAtLeast(1),
+                            count = slides.size,
+                            pinned = pinned != null,
+                            reduceMotion = reduceMotion,
+                            previewOn = previewOn,
+                            onMove = { d -> if (slides.isNotEmpty()) slideIndex = (slideIndex + d + slides.size) % slides.size },
+                            onOpen = { shown?.let { openSlide(it) } },
+                            onLongClick = {
+                                val s = shown ?: return@FeaturedBlock
+                                if (s.kind != Kind.LIVE) actions.toggleFavorite(s.kind, s.remoteId, s.title, s.poster)
+                            },
+                            memory = memory,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                        )
+                    }
+                    Spacer(Modifier.width(16.dp))
                     LiveNowPanel(
                         events = liveEvents.take(4),
                         onFocusEvent = { pinned = eventSlide(it) },
@@ -291,17 +327,20 @@ fun HomeScreen() {
                             val list = liveEvents.map { it.channel }
                             actions.playChannels(list, liveEvents.indexOf(ev))
                         },
-                        onSeeAll = { selectTab(MainTab.LIVE) },
                         memory = memory,
                         modifier = Modifier
-                            .width(292.dp)
+                            .width(266.dp)
                             .fillMaxHeight(),
                     )
                 }
             }
+            if (loading && continueList.isEmpty()) {
+                item(key = "sk1") { SkeletonShelf() }
+                item(key = "sk2") { SkeletonShelf() }
+            }
             if (continueList.isNotEmpty()) {
                 item(key = "continue") {
-                    Shelf("Seguir viendo") {
+                    Shelf("Seguir viendo", modifier = Modifier.animateItem()) {
                         items(continueList, key = { it.uid }) { p ->
                             val fraction = if (p.durationMs > 0) p.positionMs.toFloat() / p.durationMs else 0f
                             MediaCard(
@@ -310,7 +349,6 @@ fun HomeScreen() {
                                 subtitle = if (p.kind == Kind.SERIES.name) p.subtitle
                                 else Fmt.minutesLeft(p.durationMs - p.positionMs),
                                 progress = fraction,
-                                width = 120.dp,
                                 onClick = { actions.openProgress(p) },
                                 onLongClick = { actions.removeFromContinue(p) },
                                 modifier = Modifier.focusMemory("continue:${p.uid}", memory),
@@ -321,11 +359,11 @@ fun HomeScreen() {
             }
             if (recentChannels.isNotEmpty()) {
                 item(key = "recent") {
-                    Shelf("Últimos canales", live = true) {
+                    Shelf("Últimos canales", live = true, modifier = Modifier.animateItem()) {
                         items(recentChannels, key = { "r:" + it.remoteId }) { c ->
                             ChannelCard(
                                 c = c,
-                                width = 212.dp,
+                                width = 188.dp,
                                 showAge = true,
                                 onClick = { actions.playChannels(recentChannels, recentChannels.indexOf(c)) },
                                 onLongClick = { actions.toggleFavorite(Kind.LIVE, c.remoteId, c.name, c.logo) },
@@ -337,12 +375,11 @@ fun HomeScreen() {
             }
             if (movies.isNotEmpty()) {
                 item(key = "movies") {
-                    Shelf("Películas recomendadas") {
+                    Shelf("Películas recomendadas", modifier = Modifier.animateItem()) {
                         items(movies, key = { "m:" + it.remoteId }) { m ->
                             MediaCard(
                                 title = cleanTitle(m.name),
                                 image = m.poster,
-                                width = 120.dp,
                                 rating = m.rating,
                                 onClick = { actions.openMovie(m) },
                                 onLongClick = { actions.toggleFavorite(Kind.MOVIE, m.remoteId, m.name, m.poster) },
@@ -354,7 +391,7 @@ fun HomeScreen() {
             }
             if (sports.isNotEmpty()) {
                 item(key = "sports") {
-                    Shelf("Deportes y eventos en directo", live = true) {
+                    Shelf("Deportes y eventos en directo", live = true, modifier = Modifier.animateItem()) {
                         items(sports, key = { "sp:" + it.channel.remoteId }) { ev ->
                             EventCard(
                                 event = ev,
@@ -367,12 +404,11 @@ fun HomeScreen() {
             }
             if (series.isNotEmpty()) {
                 item(key = "series") {
-                    Shelf("Series recomendadas") {
+                    Shelf("Series recomendadas", modifier = Modifier.animateItem()) {
                         items(series, key = { "s:" + it.remoteId }) { s ->
                             MediaCard(
                                 title = cleanTitle(s.name),
                                 image = s.poster,
-                                width = 120.dp,
                                 rating = s.rating,
                                 onClick = { actions.openSeries(s) },
                                 onLongClick = { actions.toggleFavorite(Kind.SERIES, s.remoteId, s.name, s.poster) },
@@ -384,7 +420,7 @@ fun HomeScreen() {
             }
             if (news.isNotEmpty()) {
                 item(key = "news") {
-                    Shelf("Noticias en directo", live = true) {
+                    Shelf("Noticias en directo", live = true, modifier = Modifier.animateItem()) {
                         items(news, key = { "nw:" + it.channel.remoteId }) { ev ->
                             EventCard(
                                 event = ev,
@@ -397,14 +433,14 @@ fun HomeScreen() {
             }
             if (myList.isNotEmpty()) {
                 item(key = "mylist") {
-                    Shelf("Mi lista") {
+                    Shelf("Mi lista", modifier = Modifier.animateItem()) {
                         items(myList, key = { it.uid }) { f -> FavoriteCard(f, memory) }
                     }
                 }
             }
             if (favoriteChannels.isNotEmpty()) {
                 item(key = "favchannels") {
-                    Shelf("Canales favoritos", live = true) {
+                    Shelf("Canales favoritos", live = true, modifier = Modifier.animateItem()) {
                         items(favoriteChannels, key = { "f:" + it.remoteId }) { c ->
                             ChannelCard(
                                 c = c,
@@ -437,13 +473,13 @@ private fun FeaturedBlock(
     modifier: Modifier = Modifier,
 ) {
     var hasFocus by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(20.dp)
     val borderAlpha by androidx.compose.animation.core.animateFloatAsState(if (hasFocus) 0.9f else 0.06f, label = "fb")
     Box(
         modifier
             .clip(shape)
             .background(Palette.Surface)
-            .border(BorderStroke(if (hasFocus) 2.dp else 1.dp, Color.White.copy(alpha = borderAlpha)), shape)
+            .border(BorderStroke(if (hasFocus) 1.5.dp else 1.dp, Color.White.copy(alpha = borderAlpha)), shape)
             .onFocusChanged { hasFocus = it.hasFocus }
     ) {
         AnimatedContent(
@@ -489,7 +525,7 @@ private fun FeaturedBlock(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = slide.title,
-                style = Type.Display.copy(fontSize = 30.sp, lineHeight = 34.sp),
+                style = Type.Display.copy(fontSize = 26.sp, lineHeight = 30.sp),
                 color = Color.White,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -519,7 +555,7 @@ private fun FeaturedBlock(
                     onClick = onOpen,
                     onLongClick = onLongClick,
                     modifier = Modifier
-                        .height(42.dp)
+                        .height(38.dp)
                         .focusMemory("featured", memory),
                     shape = ClickableSurfaceDefaults.shape(shape = PillShape),
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
@@ -574,7 +610,7 @@ private fun FeaturedBlock(
 }
 
 @Composable
-private fun RoundButton(text: String, onClick: () -> Unit, size: Dp = 42.dp) {
+private fun RoundButton(text: String, onClick: () -> Unit, size: Dp = 38.dp) {
     Surface(
         onClick = onClick,
         modifier = Modifier.size(size),
@@ -614,6 +650,7 @@ private fun SlideArt(s: Slide, reduceMotion: Boolean, previewOn: Boolean) {
                 LivePreview(
                     url = repo.liveUrl(ev.channel),
                     enabled = previewOn,
+                    channel = ev.channel,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
@@ -687,21 +724,20 @@ private fun LiveNowPanel(
     onFocusEvent: (LiveEvent) -> Unit,
     onPanelFocus: (Boolean) -> Unit,
     onPlay: (LiveEvent) -> Unit,
-    onSeeAll: () -> Unit,
     memory: MutableState<String?>,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Palette.Surface)
-            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(22.dp))
-            .padding(horizontal = 10.dp, vertical = 14.dp)
+            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(20.dp))
+            .padding(horizontal = 8.dp, vertical = 12.dp)
             .onFocusChanged { onPanelFocus(it.hasFocus) }
             .focusRestorer()
             .focusGroup()
     ) {
-        Row(Modifier.padding(start = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             com.nansu.tvnansu.ui.components.LiveDot()
             Spacer(Modifier.width(8.dp))
             Text("En directo ahora", style = Type.Section, color = Palette.Text)
@@ -722,12 +758,6 @@ private fun LiveNowPanel(
                 modifier = Modifier.focusMemory("now:${ev.channel.remoteId}", memory),
             )
         }
-        Spacer(Modifier.weight(1f))
-        PillButton(
-            text = "Ver todo En vivo  →",
-            onClick = onSeeAll,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -763,7 +793,7 @@ private fun FavoriteCard(f: FavoriteEntity, memory: MutableState<String?>) {
     MediaCard(
         title = f.title,
         image = f.image,
-        width = 120.dp,
+        width = com.nansu.tvnansu.ui.components.POSTER_W,
         onClick = { if (isSeries) actions.openSeries(f.remoteId) else actions.openMovie(f.remoteId) },
         onLongClick = {
             actions.toggleFavorite(if (isSeries) Kind.SERIES else Kind.MOVIE, f.remoteId, f.title, f.image)
