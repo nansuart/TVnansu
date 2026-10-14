@@ -6,9 +6,18 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 
+/**
+ * Subtitle sizes and styles. Text subtitles are drawn by [SubtitleOverlay] (Inter,
+ * Apple TV look); this only configures the system renderer, which is still used
+ * for image subtitles (PGS / DVB).
+ */
 object SubtitleStyle {
-    val labels = listOf("Pequeño", "Normal", "Grande", "Muy grande")
-    private val scales = floatArrayOf(0.85f, 1.1f, 1.4f, 1.75f)
+    val labels = listOf("XS", "S", "M", "L", "XL")
+
+    /** Text size per option, in sp. XS matches the Apple TV size. */
+    val sizesSp = floatArrayOf(19f, 22f, 25f, 29f, 34f)
+
+    private val scales = floatArrayOf(0.75f, 0.88f, 1.0f, 1.18f, 1.4f)
 
     fun apply(view: PlayerView, size: Int, background: Boolean) {
         val sub = view.subtitleView ?: return
@@ -20,7 +29,7 @@ object SubtitleStyle {
             if (background) {
                 CaptionStyleCompat(
                     Color.WHITE,
-                    Color.argb(190, 0, 0, 0),
+                    Color.argb(160, 0, 0, 0),
                     Color.TRANSPARENT,
                     CaptionStyleCompat.EDGE_TYPE_NONE,
                     Color.TRANSPARENT,
@@ -31,9 +40,9 @@ object SubtitleStyle {
                     Color.WHITE,
                     Color.TRANSPARENT,
                     Color.TRANSPARENT,
-                    CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                    CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
                     Color.BLACK,
-                    Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD),
+                    Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL),
                 )
             }
         )

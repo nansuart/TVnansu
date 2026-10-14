@@ -22,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -185,20 +187,20 @@ fun EventCard(
                     text = event.title,
                     style = Type.Label.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
-                    maxLines = 2,
+                    maxLines = if (eventSubtitle(event).isEmpty()) 3 else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = listOfNotNull(
-                        event.channel.name,
-                        if (event.start > 0) "${Fmt.clock(event.start)} – ${Fmt.clock(event.stop)}" else null,
-                    ).joinToString("  ·  "),
-                    style = Type.Caption,
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val sub = eventSubtitle(event)
+                if (sub.isNotEmpty()) {
+                    Text(
+                        text = sub,
+                        style = Type.Caption,
+                        color = Color.White.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (event.start > 0 && event.stop > event.start) {
                     Spacer(Modifier.height(6.dp))
                     ProgressLine(
@@ -283,7 +285,7 @@ fun LiveNowRow(
                         style = Type.Caption.copy(fontWeight = FontWeight.SemiBold),
                         color = Palette.Accent,
                     )
-                    Text(
+                    if (!event.channel.name.equals(event.title, ignoreCase = true)) Text(
                         text = "  ·  " + event.channel.name,
                         style = Type.Caption,
                         color = Palette.TextFaint,
@@ -310,3 +312,26 @@ fun themeTint(label: String): Color = when (label) {
     "EVENTO" -> Color(0xFF4A1E2A)
     else -> Palette.Surface3
 }
+
+/**
+ * Fills its box with content of the given aspect ratio, cropping the overflow
+ * (like "centre crop" for video), so nothing is ever stretched.
+ */
+@Composable
+fun CoverBox(aspect: Float, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier.then(Modifier.clipToBounds()),
+        contentAlignment = Alignment.Center,
+    ) {
+        val boxAspect = if (maxHeight.value > 0f) maxWidth / maxHeight else aspect
+        val w = if (boxAspect > aspect) maxWidth else maxHeight * aspect
+        val h = if (boxAspect > aspect) maxWidth / aspect else maxHeight
+        Box(Modifier.requiredSize(w, h)) { content() }
+    }
+}
+
+/** "ESPN · 23:00 – 00:00", without repeating the channel when it is also the title (PPV events). */
+fun eventSubtitle(event: LiveEvent): String = listOfNotNull(
+    event.channel.name.takeIf { !it.equals(event.title, ignoreCase = true) },
+    if (event.start > 0) "${Fmt.clock(event.start)} – ${Fmt.clock(event.stop)}" else null,
+).joinToString("  ·  ")

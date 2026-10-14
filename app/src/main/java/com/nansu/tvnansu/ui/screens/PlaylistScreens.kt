@@ -378,7 +378,7 @@ fun SettingsScreen() {
         Spacer(Modifier.height(10.dp))
         SettingRow(
             title = "Tamaño de los subtítulos",
-            description = "También se cambia durante la reproducción, en el panel de audio y subtítulos.",
+            description = "XS es el tamaño de Apple TV. También se cambia durante la reproducción, en el panel de audio y subtítulos.",
         ) {
             Segmented(
                 options = com.nansu.tvnansu.ui.player.SubtitleStyle.labels,
@@ -392,10 +392,10 @@ fun SettingsScreen() {
         Spacer(Modifier.height(10.dp))
         SettingRow(
             title = "Estilo de los subtítulos",
-            description = "Contorno negro sobre la imagen, o caja oscura detrás del texto para leer mejor en escenas claras.",
+            description = "Letra Inter blanca con sombra suave, o sobre una caja negra translúcida con esquinas redondeadas, como en Apple TV.",
         ) {
             Segmented(
-                options = listOf("Contorno", "Fondo"),
+                options = listOf("Sin fondo", "Fondo"),
                 selected = if (subtitleBackground) 1 else 0,
                 onSelect = {
                     subtitleBackground = it == 1

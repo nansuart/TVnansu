@@ -36,7 +36,9 @@ import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.components.CardShape
 import com.nansu.tvnansu.ui.components.EmptyState
 import com.nansu.tvnansu.ui.components.HeroData
-import com.nansu.tvnansu.ui.components.HeroScaffold
+import com.nansu.tvnansu.ui.components.Showcase
+import com.nansu.tvnansu.ui.components.ShowcaseItem
+import com.nansu.tvnansu.ui.components.ShowcaseScaffold
 import com.nansu.tvnansu.ui.components.LoadingView
 import com.nansu.tvnansu.ui.components.MediaCard
 import com.nansu.tvnansu.ui.components.Shelf
@@ -56,10 +58,11 @@ data class BrowseItem(
     val poster: String?,
     val hero: HeroData,
     val rating: Float = 0f,
+    val year: String? = null,
 )
 
-fun MovieEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, movieHero(this), rating)
-fun SeriesEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, seriesHero(this), rating)
+fun MovieEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, movieHero(this), rating, year?.take(4))
+fun SeriesEntity.toBrowse() = BrowseItem(remoteId, cleanTitle(name), poster, seriesHero(this), rating, year?.take(4))
 
 const val ROW_LIMIT = 40
 
@@ -140,6 +143,17 @@ fun BrowseScreen(isSeries: Boolean) {
         if (hero.target == null) hero.target = recent.firstOrNull()?.hero
     }
 
+    // Carousel: newest titles with wide artwork, the best rated, and the list of the season
+    // (Halloween in October, Christmas in December) for movies or a platform pick for series.
+    val favUids by remember(pid) { repo.favoriteUids(pid) }.collectAsState(initial = emptyList())
+    val seasonal = remember(collectionResults) {
+        collectionResults.values.firstOrNull { it.def.group == "listas" && it.def.months.isNotEmpty() && it.movies.isNotEmpty() }
+    }
+    val showcaseKey = repo.memoKey("showcase:${kind.name}:${seasonal?.def?.id}:${platformRows.size}", pid)
+    val showcase by produceState(repo.peek<List<ShowcaseItem>>(showcaseKey) ?: emptyList(), showcaseKey) {
+        value = repo.cached(showcaseKey) { buildShowcase(repo, pid, isSeries, seasonal, platformRows) }
+    }
+
     val cats = categories
     if (cats == null) {
         LoadingView()
@@ -163,6 +177,7 @@ fun BrowseScreen(isSeries: Boolean) {
     fun Card(item: BrowseItem, rowKey: String) {
         MediaCard(
             title = item.title,
+            subtitle = item.year,
             image = item.poster,
             width = com.nansu.tvnansu.ui.components.POSTER_W,
             onClick = { open(item) },
@@ -173,7 +188,23 @@ fun BrowseScreen(isSeries: Boolean) {
         )
     }
 
-    HeroScaffold(hero = hero.shown, listState = rememberLazyListState()) {
+    val listState = rememberLazyListState()
+    val headerHidden = LocalHeaderHidden.current
+    ShowcaseScaffold(
+        listState = listState,
+        onScrolled = { headerHidden.value = it },
+        top = { mod ->
+            Showcase(
+                items = showcase,
+                onOpen = { s -> if (isSeries) actions.openSeries(s.remoteId) else actions.openMovie(s.remoteId) },
+                onToggleList = { s -> actions.toggleFavorite(kind, s.remoteId, s.title, s.poster) },
+                inList = { s -> repo.uid(pid, kind, s.remoteId) in favUids },
+                memory = memory,
+                memoryKey = "$prefix:showcase",
+                modifier = mod,
+            )
+        },
+    ) {
         if (recent.isNotEmpty()) {
             item(key = "recent") {
                 Shelf(if (isSeries) "Actualizadas recientemente" else "Añadidas recientemente") {
@@ -359,3 +390,43 @@ fun CollectionTile(
         }
     }
 }
+
+private suspend fun buildShowcase(
+    repo: Repository,
+    pid: Long,
+    isSeries: Boolean,
+    seasonal: com.nansu.tvnansu.data.CollectionResult?,
+    platformRows: List<Pair<String, List<BrowseItem>>>,
+): List<ShowcaseItem> {
+    val out = ArrayList<ShowcaseItem>()
+    if (!isSeries) {
+        var recent = repo.dao.recentMovies(pid, 12).distinctBy { it.remoteId }
+        if (repo.prefetchBackdrops(recent.take(8))) recent = repo.dao.recentMovies(pid, 12).distinctBy { it.remoteId }
+        recent.sortedByDescending { it.backdrop != null }.take(5).forEach { out += it.showcase("NUEVA EN TU LISTA") }
+        repo.recommendedMovies(pid, 12).filter { m -> out.none { it.remoteId == m.remoteId } }
+            .sortedByDescending { it.rating }.take(2).forEach { out += it.showcase("MEJOR VALORADA") }
+        seasonal?.movies?.firstOrNull { m -> out.none { it.remoteId == m.remoteId } }?.let {
+            out += it.showcase(seasonal.def.title.uppercase())
+        }
+    } else {
+        val recent = repo.dao.recentSeries(pid, 12).distinctBy { it.remoteId }
+        recent.sortedByDescending { it.backdrop != null }.take(5).forEach { out += it.showcase("SERIE · ACTUALIZADA") }
+        repo.recommendedSeries(pid, 12).filter { s -> out.none { it.remoteId == s.remoteId } }
+            .sortedByDescending { it.rating }.take(2).forEach { out += it.showcase("SERIE · MEJOR VALORADA") }
+        for ((platform, list) in platformRows.take(2)) {
+            val pick = list.firstOrNull { b -> out.none { it.remoteId == b.remoteId } } ?: continue
+            repo.dao.series(pid, pick.remoteId)?.let { out += it.showcase(platform.uppercase()) }
+        }
+    }
+    return out
+}
+
+private fun MovieEntity.showcase(eyebrow: String) = ShowcaseItem(
+    key = "m:$remoteId", kind = Kind.MOVIE, remoteId = remoteId, title = cleanTitle(name), eyebrow = eyebrow,
+    meta = metaLine(year, rating, null), description = plot, backdrop = backdrop, poster = poster,
+)
+
+private fun SeriesEntity.showcase(eyebrow: String) = ShowcaseItem(
+    key = "s:$remoteId", kind = Kind.SERIES, remoteId = remoteId, title = cleanTitle(name), eyebrow = eyebrow,
+    meta = metaLine(year, rating, genre), description = plot, backdrop = backdrop, poster = poster,
+)

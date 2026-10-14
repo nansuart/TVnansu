@@ -4,6 +4,7 @@ import com.nansu.tvnansu.ui.components.ChannelLogo
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -63,6 +64,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -132,6 +136,19 @@ fun PlayerScreen(request: PlayRequest) {
     var introVersion by remember { mutableIntStateOf(0) }
     val markerScope = rememberCoroutineScope()
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
+
+    // Subtitles: text ones are drawn by SubtitleOverlay; image ones (PGS) by the player view.
+    var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+    DisposableEffect(controller.player) {
+        val listener = object : Player.Listener {
+            override fun onCues(cueGroup: CueGroup) {
+                cues = cueGroup.cues
+            }
+        }
+        controller.player.addListener(listener)
+        onDispose { controller.player.removeListener(listener) }
+    }
+    val imageSubs = cues.any { it.bitmap != null }
     val watermark = remember { repo.prefs.watermark }
     var leaving by remember { mutableStateOf(false) }
 
@@ -333,9 +350,30 @@ fun PlayerScreen(request: PlayRequest) {
                     player = controller.player
                 }
             },
-            update = { view -> SubtitleStyle.apply(view, subtitleSize, subtitleBackground) },
+            update = { view ->
+                SubtitleStyle.apply(view, subtitleSize, subtitleBackground)
+                view.subtitleView?.visibility = if (imageSubs) android.view.View.VISIBLE else android.view.View.INVISIBLE
+            },
             modifier = Modifier.fillMaxSize(),
         )
+
+        val subtitleLift by animateDpAsState(
+            targetValue = when {
+                !overlay || panel != null -> 0.dp
+                isLive -> 190.dp
+                else -> 150.dp
+            },
+            animationSpec = tween(300),
+            label = "subLift",
+        )
+        if (!imageSubs) {
+            SubtitleOverlay(
+                cues = cues,
+                sizeIndex = subtitleSize,
+                background = subtitleBackground,
+                lift = subtitleLift,
+            )
+        }
 
         if (controller.buffering && controller.error == null) {
             Spinner(Modifier.align(Alignment.Center), size = 52)
@@ -878,13 +916,13 @@ private fun TracksPanel(
         Text("Tamaño de subtítulos", style = Type.Section, color = Palette.Text)
         Spacer(Modifier.height(10.dp))
         Segmented(
-            options = listOf("S", "M", "L", "XL"),
+            options = SubtitleStyle.labels,
             selected = subtitleSize,
             onSelect = onSubtitleSize,
         )
         Spacer(Modifier.height(12.dp))
         Segmented(
-            options = listOf("Contorno", "Fondo"),
+            options = listOf("Sin fondo", "Fondo"),
             selected = if (subtitleBackground) 1 else 0,
             onSelect = { onSubtitleBackground(it == 1) },
         )

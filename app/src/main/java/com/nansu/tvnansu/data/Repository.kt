@@ -953,6 +953,79 @@ class Repository(
         list.take(limit)
     }
 
+    // ------------------------------------------------------------------ more like this
+
+    /**
+     * Movies close to [m] using only what the list already has: same studio, director
+     * or themed list (Wikidata collections), same provider category, close years,
+     * then the best rated.
+     */
+    suspend fun similarMovies(m: MovieEntity, limit: Int = 20): List<MovieEntity> = withContext(Dispatchers.IO) {
+        val pid = m.playlistId
+        val year = m.year?.take(4)?.toIntOrNull()
+        val score = HashMap<String, Double>()
+        val byId = HashMap<String, MovieEntity>()
+        fun add(x: MovieEntity, points: Double) {
+            if (x.remoteId == m.remoteId) return
+            byId[x.remoteId] = x
+            score[x.remoteId] = (score[x.remoteId] ?: 0.0) + points
+        }
+        collections.results.value.values
+            .filter { r -> r.movies.any { it.remoteId == m.remoteId } }
+            .forEach { r -> r.movies.forEach { add(it, if (r.def.group == "listas") 3.0 else 5.0) } }
+        dao.moviesIn(pid, m.categoryId, 300).forEach { add(it, 2.0) }
+        for ((id, x) in byId) {
+            val y = x.year?.take(4)?.toIntOrNull()
+            var extra = x.rating / 10.0
+            if (year != null && y != null) {
+                val d = kotlin.math.abs(year - y)
+                extra += when {
+                    d <= 3 -> 1.5
+                    d <= 8 -> 0.7
+                    else -> 0.0
+                }
+            }
+            score[id] = (score[id] ?: 0.0) + extra
+        }
+        val ranked = byId.values
+            .distinctBy { cleanName(it.name) }
+            .sortedByDescending { score[it.remoteId] ?: 0.0 }
+            .filter { cleanName(it.name) != cleanName(m.name) }
+        ranked.take(limit)
+    }
+
+    /** Series close to [s]: shared genres, same platform, same category, close years. */
+    suspend fun similarSeries(s: SeriesEntity, limit: Int = 20): List<SeriesEntity> = withContext(Dispatchers.IO) {
+        val pid = s.playlistId
+        val genres = genresOf(s.genre)
+        val year = s.year?.take(4)?.toIntOrNull()
+        val platform = dao.platformOf("$pid:${s.remoteId}")
+        val byId = HashMap<String, SeriesEntity>()
+        dao.seriesIn(pid, s.categoryId, 200).forEach { byId[it.remoteId] = it }
+        genres.take(2).forEach { g -> dao.seriesByGenre(pid, g, 120).forEach { byId[it.remoteId] = it } }
+        if (platform != null) dao.seriesOfPlatform(pid, platform).take(150).forEach { byId[it.series.remoteId] = it.series }
+        val platformIds = if (platform != null) dao.seriesOfPlatform(pid, platform).map { it.series.remoteId }.toHashSet() else emptySet()
+        byId.remove(s.remoteId)
+        fun score(x: SeriesEntity): Double {
+            var p = 2.0 * genresOf(x.genre).count { it in genres }.coerceAtMost(3)
+            if (x.categoryId == s.categoryId) p += 1.5
+            if (x.remoteId in platformIds) p += 2.0
+            val y = x.year?.take(4)?.toIntOrNull()
+            if (year != null && y != null && kotlin.math.abs(year - y) <= 5) p += 0.8
+            return p + x.rating / 10.0
+        }
+        byId.values
+            .distinctBy { cleanName(it.name) }
+            .filter { cleanName(it.name) != cleanName(s.name) }
+            .sortedByDescending { score(it) }
+            .take(limit)
+    }
+
+    private fun genresOf(raw: String?): List<String> =
+        raw.orEmpty().split(',', '/', '&', '|').map { it.trim().lowercase() }.filter { it.length > 2 }
+
+    private fun cleanName(n: String) = PlatformClassifier.searchName(n).lowercase()
+
     // ------------------------------------------------------------------ live themes
 
     suspend fun liveThemes(pid: Long): List<ThemeSummary> = withContext(Dispatchers.IO) {

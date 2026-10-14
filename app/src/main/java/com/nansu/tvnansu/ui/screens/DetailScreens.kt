@@ -19,6 +19,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.items
+import com.nansu.tvnansu.ui.LocalEdge
+import com.nansu.tvnansu.ui.components.Shelf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -78,6 +84,10 @@ fun MovieDetailScreen(remoteId: String) {
     }
     val playRequester = remember { FocusRequester() }
     val memory = rememberFocusMemory()
+    val similar by produceState(emptyList<MovieEntity>(), movie) {
+        val mv = movie ?: return@produceState
+        value = runCatching { repo.similarMovies(mv) }.getOrDefault(emptyList())
+    }
 
     val m = movie
     if (m == null) {
@@ -102,8 +112,9 @@ fun MovieDetailScreen(remoteId: String) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(start = 56.dp, top = 72.dp, end = 360.dp)
+                .verticalScroll(rememberScrollState())
         ) {
+        Column(Modifier.padding(start = 56.dp, top = 72.dp, end = 360.dp)) {
             Text("PELÍCULA", style = Type.Label, color = Palette.Accent)
             Spacer(Modifier.height(10.dp))
             Text(cleanTitle(m.name), style = Type.Display, color = Palette.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -162,6 +173,26 @@ fun MovieDetailScreen(remoteId: String) {
                 )
             }
         }
+        if (similar.isNotEmpty()) {
+            Spacer(Modifier.height(36.dp))
+            CompositionLocalProvider(LocalEdge provides 56.dp) {
+                Shelf("Más como esto") {
+                    items(similar, key = { "sim:" + it.remoteId }) { x ->
+                        MediaCard(
+                            title = cleanTitle(x.name),
+                            subtitle = x.year?.take(4),
+                            image = x.poster,
+                            rating = x.rating,
+                            onClick = { actions.openMovie(x) },
+                            onLongClick = { actions.toggleFavorite(Kind.MOVIE, x.remoteId, x.name, x.poster) },
+                            modifier = Modifier.focusMemory("sim:${x.remoteId}", memory),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(40.dp))
+        }
+        }
     }
 }
 
@@ -194,6 +225,10 @@ fun SeriesDetailScreen(remoteId: String) {
     var seasonIndex by rememberSaveable { mutableIntStateOf(-1) }
     val playRequester = remember { FocusRequester() }
     val memory = rememberFocusMemory()
+    val similar by produceState(emptyList<SeriesEntity>(), series) {
+        val se = series ?: return@produceState
+        value = runCatching { repo.similarSeries(se) }.getOrDefault(emptyList())
+    }
 
     val s = series
     if (s == null) {
@@ -240,6 +275,7 @@ fun SeriesDetailScreen(remoteId: String) {
         Column(
             Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(top = 56.dp)
         ) {
             Column(Modifier.padding(start = 56.dp, end = 360.dp)) {
@@ -353,6 +389,25 @@ fun SeriesDetailScreen(remoteId: String) {
                         }
                     }
                 }
+            }
+            if (similar.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                CompositionLocalProvider(LocalEdge provides 56.dp) {
+                    Shelf("Más como esto") {
+                        items(similar, key = { "sim:" + it.remoteId }) { x ->
+                            MediaCard(
+                                title = cleanTitle(x.name),
+                                subtitle = x.year?.take(4),
+                                image = x.poster,
+                                rating = x.rating,
+                                onClick = { actions.openSeries(x) },
+                                onLongClick = { actions.toggleFavorite(Kind.SERIES, x.remoteId, x.name, x.poster) },
+                                modifier = Modifier.focusMemory("sim:${x.remoteId}", memory),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(40.dp))
             }
         }
     }

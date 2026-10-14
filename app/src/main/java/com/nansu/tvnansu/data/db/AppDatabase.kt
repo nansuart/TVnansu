@@ -354,4 +354,11 @@ interface AppDao {
 
     @Query("SELECT COUNT(*) FROM channel WHERE playlistId = :pid AND categoryId IN (:cats)")
     suspend fun countInCategories(pid: Long, cats: List<String>): Int
+
+    // ---- More like this ----
+    @Query("SELECT * FROM series WHERE playlistId = :pid AND genre LIKE '%' || :genre || '%' ORDER BY rating DESC LIMIT :limit")
+    suspend fun seriesByGenre(pid: Long, genre: String, limit: Int): List<SeriesEntity>
+
+    @Query("SELECT platform FROM series_meta WHERE seriesKey = :key LIMIT 1")
+    suspend fun platformOf(key: String): String?
 }

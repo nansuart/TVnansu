@@ -78,12 +78,14 @@ import com.nansu.tvnansu.ui.LocalEdge
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.LocalTopInset
 import com.nansu.tvnansu.ui.RevealScroll
+import com.nansu.tvnansu.ui.keepAtTop
 import com.nansu.tvnansu.ui.components.Skeleton
 import com.nansu.tvnansu.ui.components.SkeletonShelf
 import kotlinx.coroutines.launch
 import com.nansu.tvnansu.ui.components.CaptureImage
 import com.nansu.tvnansu.ui.components.ChannelArt
 import com.nansu.tvnansu.ui.components.ChannelLogo
+import com.nansu.tvnansu.ui.components.CoverBox
 import com.nansu.tvnansu.ui.components.EmptyState
 import com.nansu.tvnansu.ui.components.EventCard
 import com.nansu.tvnansu.ui.components.HeroData
@@ -156,10 +158,7 @@ private fun seriesSlide(s: SeriesEntity) = Slide(
 
 private fun eventSlide(e: LiveEvent) = Slide(
     "e:" + e.channel.remoteId, Kind.LIVE, e.channel.remoteId, e.title, "EN DIRECTO · ${e.label}",
-    listOfNotNull(
-        e.channel.name,
-        if (e.start > 0) "${Fmt.clock(e.start)} – ${Fmt.clock(e.stop)}" else null,
-    ).joinToString("  ·  "),
+    com.nansu.tvnansu.ui.components.eventSubtitle(e),
     null, null, false, null, e,
 )
 
@@ -289,7 +288,7 @@ fun HomeScreen() {
                         .fillMaxWidth()
                         .height(256.dp)
                         // The whole block always comes fully into view.
-                        .onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } }
+                        .keepAtTop(listState)
                 ) {
                     if (shown == null && slides.isEmpty()) {
                         Skeleton(
@@ -499,16 +498,17 @@ private fun FeaturedBlock(
                 .fillMaxSize()
                 .background(
                     Brush.horizontalGradient(
-                        0f to Color.Black.copy(alpha = 0.82f),
-                        0.45f to Color.Black.copy(alpha = 0.45f),
-                        0.75f to Color.Transparent,
+                        0f to Color.Black.copy(alpha = 0.86f),
+                        0.38f to Color.Black.copy(alpha = 0.62f),
+                        0.62f to Color.Black.copy(alpha = 0.18f),
+                        0.8f to Color.Transparent,
                     )
                 )
         )
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.75f)))
+                .background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.85f)))
         )
         if (slide == null) return@Box
         Column(
@@ -579,7 +579,7 @@ private fun FeaturedBlock(
                     )
                 }
                 if (count > 1 && !pinned) {
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(18.dp))
                     RoundButton("‹", onClick = { onMove(-1) })
                     Spacer(Modifier.width(8.dp))
                     RoundButton("›", onClick = { onMove(1) })
@@ -647,15 +647,15 @@ private fun SlideArt(s: Slide, reduceMotion: Boolean, previewOn: Boolean) {
                         .fillMaxSize()
                         .background(Brush.linearGradient(listOf(Palette.Surface, themeTint(ev.label))))
                 )
-                LivePreview(
-                    url = repo.liveUrl(ev.channel),
-                    enabled = previewOn,
-                    channel = ev.channel,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight()
-                        .aspectRatio(16f / 9f),
-                ) { LivePlaceholder(ev.channel) }
+                // The picture fills the whole box (cropped, never stretched).
+                CoverBox(16f / 9f, Modifier.fillMaxSize()) {
+                    LivePreview(
+                        url = repo.liveUrl(ev.channel),
+                        enabled = previewOn,
+                        channel = ev.channel,
+                        modifier = Modifier.fillMaxSize(),
+                    ) { LivePlaceholder(ev.channel) }
+                }
             }
             s.wide -> AsyncImage(
                 model = s.image,
@@ -708,7 +708,7 @@ private fun LivePlaceholder(channel: ChannelEntity) {
                 showNameFallback = false,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(start = 60.dp)
+                    .padding(start = 180.dp)
                     .size(width = 160.dp, height = 90.dp)
                     .clip(RoundedCornerShape(14.dp)),
             )

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.nansu.tvnansu.data.Repository
 import com.nansu.tvnansu.ui.nav.LocalNavigator
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -96,6 +97,28 @@ fun Modifier.focusMemory(key: String, memory: MutableState<String?>): Modifier =
     this
         .focusRequester(requester)
         .onFocusChanged { if (it.isFocused) memory.value = key }
+}
+
+/**
+ * For the large block at the top of a screen: whenever focus enters it, the list
+ * goes back to the very start so the block is seen whole. It runs just after the
+ * system's own scroll-to-focus (which would otherwise leave the block cut off) and
+ * checks again a moment later.
+ */
+fun Modifier.keepAtTop(listState: androidx.compose.foundation.lazy.LazyListState): Modifier = composed {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val inside = remember { mutableStateOf(false) }
+    onFocusChanged { st ->
+        inside.value = st.hasFocus
+        if (st.hasFocus) scope.launch {
+            delay(40)
+            if (inside.value) listState.animateScrollToItem(0)
+            delay(350)
+            if (inside.value && (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0)) {
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
 }
 
 /**

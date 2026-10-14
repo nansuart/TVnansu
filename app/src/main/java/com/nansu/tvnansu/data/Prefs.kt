@@ -27,12 +27,21 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(pk("reduce_motion"), sp.getBoolean("reduce_motion", false))
         set(v) = sp.edit().putBoolean(pk("reduce_motion"), v).apply()
 
-    /** 0 small, 1 normal, 2 large, 3 extra large. */
+    /** 0 XS (Apple TV size, default), 1 S, 2 M, 3 L, 4 XL. */
     var subtitleSize: Int
-        get() = sp.getInt(pk("subtitle_size"), sp.getInt("subtitle_size", 1))
-        set(v) = sp.edit().putInt(pk("subtitle_size"), v).apply()
+        get() {
+            if (sp.contains(pk("subtitle_size5"))) return sp.getInt(pk("subtitle_size5"), 0)
+            // Older versions had four sizes (S…XL): keep the choice the user made.
+            val legacy = when {
+                sp.contains(pk("subtitle_size")) -> sp.getInt(pk("subtitle_size"), 1)
+                sp.contains("subtitle_size") -> sp.getInt("subtitle_size", 1)
+                else -> return 0
+            }
+            return (legacy + 1).coerceIn(0, 4)
+        }
+        set(v) = sp.edit().putInt(pk("subtitle_size5"), v).apply()
 
-    /** Dark box behind subtitles instead of an outline. */
+    /** Translucent rounded box behind subtitles instead of a soft shadow. */
     var subtitleBackground: Boolean
         get() = sp.getBoolean(pk("subtitle_background"), sp.getBoolean("subtitle_background", false))
         set(v) = sp.edit().putBoolean(pk("subtitle_background"), v).apply()

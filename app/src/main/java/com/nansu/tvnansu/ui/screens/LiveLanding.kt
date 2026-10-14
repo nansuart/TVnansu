@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import com.nansu.tvnansu.ui.components.CoverBox
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,6 +74,7 @@ import com.nansu.tvnansu.ui.LocalEdge
 import com.nansu.tvnansu.ui.LocalRepository
 import com.nansu.tvnansu.ui.LocalTopInset
 import com.nansu.tvnansu.ui.RevealScroll
+import com.nansu.tvnansu.ui.keepAtTop
 import com.nansu.tvnansu.ui.components.Skeleton
 import kotlinx.coroutines.launch
 import com.nansu.tvnansu.ui.components.CaptureImage
@@ -168,14 +171,15 @@ fun LiveScreen() {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 72.dp),
+            contentPadding = PaddingValues(top = LocalTopInset.current, bottom = 72.dp),
         ) {
             item(key = "slideshow") {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(318.dp)
-                        .onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } }
+                        .padding(bottom = 18.dp)
+                        .height(276.dp)
+                        .keepAtTop(listState)
                 ) {
                     if (slides.isNotEmpty()) {
                         val i = slideIndex % slides.size
@@ -191,7 +195,12 @@ fun LiveScreen() {
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
-                        Skeleton(Modifier.fillMaxSize(), RoundedCornerShape(0.dp))
+                        Skeleton(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(start = edge, end = 36.dp),
+                            RoundedCornerShape(20.dp),
+                        )
                     }
                 }
             }
@@ -266,9 +275,8 @@ fun LiveScreen() {
 }
 
 /**
- * Full-width band at the top of En vivo: the channel playing on the right (muted),
- * fading into the background on the left where the text sits. It reaches the screen
- * edges, under the menu and the section title.
+ * Top of En vivo: the text on the black background on the left, and the channel
+ * playing (muted) in a rounded box on the right, like the boxes of Inicio.
  */
 @Composable
 private fun EventSlideshow(
@@ -284,157 +292,179 @@ private fun EventSlideshow(
 ) {
     val repo = LocalRepository.current
     val edge = LocalEdge.current
+    var hasFocus by remember { mutableStateOf(false) }
     val nowNext by produceState<NowNext?>(null, event.channel.remoteId) {
         value = null
         delay(300)
         value = runCatching { repo.nowNext(event.channel) }.getOrNull()
     }
-    Box(modifier.background(Palette.Bg)) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(modifier.padding(start = edge, end = 36.dp)) {
+        // Text column, on black.
         AnimatedContent(
             targetState = event,
             transitionSpec = {
-                val d = if (reduceMotion) 0 else 650
-                (fadeIn(tween(d)) + slideInHorizontally(tween(d)) { it / 14 }) togetherWith
-                    (fadeOut(tween(d)) + slideOutHorizontally(tween(d)) { -it / 14 })
+                val d = if (reduceMotion) 0 else 450
+                (fadeIn(tween(d)) + slideInVertically(tween(d)) { it / 10 }) togetherWith fadeOut(tween(d / 2))
             },
             contentKey = { it.channel.remoteId },
-            label = "event",
+            label = "eventText",
+            modifier = Modifier
+                .weight(0.42f)
+                .fillMaxHeight(),
         ) { ev ->
-            Box(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Brush.linearGradient(listOf(Palette.Bg, themeTint(ev.label).copy(alpha = 0.8f))))
-                )
-                LivePreview(
-                    url = repo.liveUrl(ev.channel),
-                    enabled = previewOn,
-                    channel = ev.channel,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight()
-                        .aspectRatio(16f / 9f),
-                ) { SlidePlaceholder(ev.channel) }
-            }
-        }
-        // Left fade for the text, top fade for the title bar, bottom fade into the rows.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        0f to Palette.Bg,
-                        0.30f to Palette.Bg.copy(alpha = 0.92f),
-                        0.55f to Palette.Bg.copy(alpha = 0.35f),
-                        0.75f to Color.Transparent,
-                    )
-                )
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Palette.Bg.copy(alpha = 0.55f),
-                        0.22f to Color.Transparent,
-                        0.72f to Color.Transparent,
-                        1f to Palette.Bg,
-                    )
-                )
-        )
-        Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth(0.52f)
-                .padding(start = edge, bottom = 26.dp)
-        ) {
-            LiveChip("EN DIRECTO · ${event.label}")
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = event.title,
-                style = Type.Display.copy(fontSize = 28.sp, lineHeight = 32.sp),
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                listOfNotNull(
-                    event.channel.name,
-                    if (event.start > 0) "${Fmt.clock(event.start)} – ${Fmt.clock(event.stop)}" else null,
-                ).joinToString("  ·  "),
-                style = Type.Label,
-                color = Color.White.copy(alpha = 0.75f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (event.start > 0 && event.stop > event.start) {
-                Spacer(Modifier.height(8.dp))
-                ProgressLine(
-                    fraction = (System.currentTimeMillis() - event.start).toFloat() / (event.stop - event.start),
-                    modifier = Modifier.fillMaxWidth(0.6f),
-                )
-            }
-            val desc = nowNext?.nowDescription
-            if (!desc.isNullOrBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(desc, style = Type.Caption, color = Color.White.copy(alpha = 0.6f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(
+            Column(
                 Modifier
-                    .focusRestorer()
-                    .focusGroup(),
-                verticalAlignment = Alignment.CenterVertically,
+                    .fillMaxSize()
+                    .padding(end = 24.dp, bottom = 62.dp),
+                verticalArrangement = Arrangement.Bottom,
             ) {
-                Surface(
-                    onClick = onPlay,
-                    modifier = Modifier
-                        .height(38.dp)
-                        .focusMemory("slideshow", memory),
-                    shape = ClickableSurfaceDefaults.shape(shape = PillShape),
-                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = Color.White.copy(alpha = 0.16f),
-                        contentColor = Color.White,
-                        focusedContainerColor = Palette.Focus,
-                        focusedContentColor = Color.Black,
-                    ),
-                ) {
-                    Text(
-                        "▶   Ver en directo",
-                        style = Type.Section,
+                LiveChip("EN DIRECTO · ${ev.label}")
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = ev.title,
+                    style = Type.Display.copy(fontSize = 26.sp, lineHeight = 30.sp),
+                    color = Color.White,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ChannelLogo(
+                        url = ev.channel.logo,
+                        name = "",
+                        showNameFallback = false,
+                        hideWhenMissing = true,
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(horizontal = 20.dp),
+                            .padding(end = 10.dp)
+                            .size(width = 44.dp, height = 25.dp)
+                            .clip(RoundedCornerShape(5.dp)),
+                    )
+                    Text(
+                        com.nansu.tvnansu.ui.components.eventSubtitle(ev),
+                        style = Type.Label,
+                        color = Color.White.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (count > 1) {
-                    Spacer(Modifier.width(10.dp))
-                    ArrowButton("‹") { onMove(-1) }
-                    Spacer(Modifier.width(8.dp))
-                    ArrowButton("›") { onMove(1) }
+                if (ev.start > 0 && ev.stop > ev.start) {
+                    Spacer(Modifier.height(8.dp))
+                    ProgressLine(
+                        fraction = (System.currentTimeMillis() - ev.start).toFloat() / (ev.stop - ev.start),
+                        modifier = Modifier.fillMaxWidth(0.75f),
+                    )
+                }
+                val desc = nowNext?.nowDescription
+                if (!desc.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(desc, style = Type.Caption, color = Color.White.copy(alpha = 0.6f), maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
-        if (count > 1) {
-            Row(
+        // Video box.
+        Box(
+            Modifier
+                .weight(0.58f)
+                .fillMaxHeight(),
+        ) {
+            Box(
                 Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 36.dp, bottom = 30.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .fillMaxSize()
+                    .clip(shape)
+                    .background(Palette.Surface)
+                    .border(
+                        BorderStroke(if (hasFocus) 1.5.dp else 1.dp, Color.White.copy(alpha = if (hasFocus) 0.9f else 0.06f)),
+                        shape,
+                    )
             ) {
-                repeat(count) { i ->
-                    val active = i == index
-                    val w by animateDpAsState(if (active) 20.dp else 6.dp, label = "dot")
+                AnimatedContent(
+                    targetState = event,
+                    transitionSpec = {
+                        val d = if (reduceMotion) 0 else 650
+                        fadeIn(tween(d)) togetherWith fadeOut(tween(d))
+                    },
+                    contentKey = { it.channel.remoteId },
+                    label = "eventVideo",
+                ) { ev ->
                     Box(
                         Modifier
-                            .size(width = w, height = 6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(if (active) Color.White else Color.White.copy(alpha = 0.35f))
-                    )
+                            .fillMaxSize()
+                            .background(Brush.linearGradient(listOf(Palette.Surface, themeTint(ev.label).copy(alpha = 0.8f))))
+                    ) {
+                        CoverBox(16f / 9f, Modifier.fillMaxSize()) {
+                            LivePreview(
+                                url = repo.liveUrl(ev.channel),
+                                enabled = previewOn,
+                                channel = ev.channel,
+                                modifier = Modifier.fillMaxSize(),
+                            ) { SlidePlaceholder(ev.channel) }
+                        }
+                    }
                 }
+                if (count > 1) {
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 12.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        repeat(count) { i ->
+                            val active = i == index
+                            val w by animateDpAsState(if (active) 18.dp else 6.dp, label = "dot")
+                            Box(
+                                Modifier
+                                    .size(width = w, height = 6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (active) Color.White else Color.White.copy(alpha = 0.4f))
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Buttons, anchored to the bottom of the text column; they stay put while the text changes.
+    Box(modifier.onFocusChanged { hasFocus = it.hasFocus }) {
+        Row(
+            Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = edge, bottom = 6.dp)
+                .focusRestorer()
+                .focusGroup(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                onClick = onPlay,
+                modifier = Modifier
+                    .height(38.dp)
+                    .focusMemory("slideshow", memory),
+                shape = ClickableSurfaceDefaults.shape(shape = PillShape),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = Color.White.copy(alpha = 0.14f),
+                    contentColor = Color.White,
+                    focusedContainerColor = Palette.Focus,
+                    focusedContentColor = Color.Black,
+                ),
+            ) {
+                Text(
+                    "▶   Ver en directo",
+                    style = Type.Section,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 20.dp),
+                )
+            }
+            if (count > 1) {
+                Spacer(Modifier.width(16.dp))
+                ArrowButton("‹") { onMove(-1) }
+                Spacer(Modifier.width(8.dp))
+                ArrowButton("›") { onMove(1) }
             }
         }
     }
