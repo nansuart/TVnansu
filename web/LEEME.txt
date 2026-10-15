@@ -61,7 +61,8 @@ Ten en cuenta
 - Formatos: el directo va en HLS (y si falla, en TS). Las películas y series
   MKV se abren con el reproductor MKV de la web (beta), que deja elegir el
   idioma del audio y los subtítulos del archivo, también en Safari 18 o más
-  reciente. Se puede desactivar en Ajustes.
+  reciente. En Ajustes → "Reproductor de películas y series" puedes elegir
+  Automático, Navegador, MKV (movi) o avbridge para comparar.
 - Los datos (lista, favoritos, progreso) se guardan en cada navegador. En otro
   ordenador tendrás que añadir la lista de nuevo.
 
@@ -76,4 +77,5 @@ Licencias
 ---------
 Tipografía Inter (SIL Open Font License, fonts/OFL.txt), hls.js y mpegts.js
 (Apache 2.0, lib/*.LICENSE.txt), movi-player (Apache 2.0, con partes de FFmpeg
-bajo LGPL; lib/movi/LICENSE.txt).
+bajo LGPL; lib/movi/LICENSE.txt), avbridge (MIT, con libav.js bajo LGPL;
+lib/avbridge/).

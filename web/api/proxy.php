@@ -107,7 +107,16 @@ $isPlaylistUrl = fn(string $u) => (bool)preg_match('~\.m3u8($|\?)~i', $u);
 // most IPTV accounts allow a single connection and refuse (or block for a while) the
 // second. Requests for pieces of a file wait here for the previous one to finish.
 $lock = null;
-if ($range && !$head) {
+$vodFile = (bool)preg_match('~/(movie|series)/|\.(mp4|mkv|avi|mov|m4v|webm)($|\?)~i', $url);
+// A request for a whole movie without Range is a player probing the file (type, size):
+// ask the provider only for its first megabyte and answer as if it were the whole file,
+// so no long download keeps the account's only connection busy.
+$probeWhole = false;
+if (!$range && !$head && $vodFile && !preg_match('~\.m3u8($|\?)~i', $url)) {
+    $range = 'bytes=0-1048575';
+    $probeWhole = true;
+}
+if ($range || ($vodFile && !preg_match('~\.m3u8($|\?)~i', $url))) {
     $dir = DATA_DIR . '/locks';
     if (!is_dir($dir)) @mkdir($dir, 0700, true);
     $lock = @fopen($dir . '/' . md5((string)parse_url($url, PHP_URL_HOST)) . '.lock', 'c+');
@@ -167,10 +176,10 @@ for ($hop = 0; $hop < 6; $hop++) {
             }
             return $len;
         },
-        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint, $range, &$sent, &$refused, $refusedTries) {
+        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint, $range, &$sent, &$refused, $refusedTries, $probeWhole) {
             if ($status >= 300 && $status < 400) return strlen($data); // redirect body: ignore
             // "Too many connections" for a piece of a file: try again in a moment (below).
-            if (!$started && $range && $refusedTries < 2 && in_array($status, [403, 429, 458, 503, 509], true)) {
+            if (!$started && $range && $refusedTries < 3 && in_array($status, [403, 429, 458, 503, 509], true)) {
                 $refused = true;
                 return strlen($data);
             }
@@ -188,11 +197,20 @@ for ($hop = 0; $hop < 6; $hop++) {
             }
             if (!$started) {
                 $started = true;
+                $total = null;
+                if ($probeWhole && $status === 206 && preg_match('~/(\d+)\s*$~', $headers['content-range'] ?? '', $mm)) {
+                    $total = $mm[1];
+                    unset($headers['content-range']);
+                    $status = 200;
+                }
                 http_response_code($status ?: 200);
                 foreach (['content-type', 'content-range', 'accept-ranges', 'last-modified'] as $h) {
                     if (isset($headers[$h])) header(ucwords($h, '-') . ': ' . $headers[$h]);
                 }
-                if (isset($headers['content-length']) && !isset($headers['content-encoding'])) {
+                if ($total !== null) {
+                    header('Content-Length: ' . $total);
+                    header('Accept-Ranges: bytes');
+                } elseif (isset($headers['content-length']) && !isset($headers['content-encoding'])) {
                     header('Content-Length: ' . $headers['content-length']);
                 }
                 // Pictures can be cached by the browser for a week; the rest is live data.
@@ -228,7 +246,7 @@ for ($hop = 0; $hop < 6; $hop++) {
     if ($refused && !$started) {
         $refusedTries++;
         $hop--;
-        usleep(900000 * $refusedTries);
+        usleep(1000000 * $refusedTries);
         continue;
     }
     if ($head) {

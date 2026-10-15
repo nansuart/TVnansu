@@ -51,6 +51,21 @@ function loadMoviLib() {
   return moviLib;
 }
 
+let abLib = null;
+/** Loads avbridge (the third player, for tests) only when chosen. */
+function loadAvbridgeLib() {
+  if (!abLib) {
+    globalThis.AVBRIDGE_LIBAV_BASE = new URL('lib/avbridge/libav', location.href).href;
+    abLib = import(new URL('lib/avbridge/element-browser.js', location.href).href).catch((e) => {
+      abLib = null;
+      throw e;
+    });
+  }
+  return abLib;
+}
+
+export const ENGINE_NAMES = { native: 'Navegador', movi: 'MKV (movi)', avbridge: 'avbridge' };
+
 function pbtn(name, title, onClick, cls = '') {
   const b = h('button.pbtn' + (cls ? '.' + cls : ''), { type: 'button', title, 'aria-label': title, tabIndex: -1 });
   b.innerHTML = ICONS[name];
@@ -283,6 +298,8 @@ function createPlayer(items, startIndex, startMs) {
     wire(el);
   }
   const isMoviEl = (el) => el && el.tagName === 'MOVI-PLAYER';
+  const isAbEl = (el) => el && el.tagName === 'AVBRIDGE-VIDEO';
+  const isCustom = (el) => isMoviEl(el) || isAbEl(el);
 
   root.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'mouse' && Math.abs(e.movementX) + Math.abs(e.movementY) < 2) return;
@@ -322,8 +339,47 @@ function createPlayer(items, startIndex, startMs) {
   let moviAudio = null, moviSub = null; // chosen tracks (ids of the MKV player)
   const forceMovi = new Set(); // files the browser couldn't open: try the MKV player (it also reads MP4/HEVC/AC3)
   const nativeTried = new Set();
-  const wantsMovi = (it) => it.kind !== 'live' && prefs.mkvPlayer !== false && !moviOff.has(it.id)
+  const wantsMovi = (it) => it.kind !== 'live' && !moviOff.has(it.id)
     && (forceMovi.has(it.id) || /\.(mkv|avi)(\?|$)/i.test(it.url || ''));
+  // Player for movies and episodes: Ajustes → "Reproductor", or the one chosen in the error box.
+  const override = new Map();
+  let currentEngine = 'native';
+  let abAudio = null, abSub = null;
+  const vodPref = () => prefs.vodPlayer || (prefs.mkvPlayer === false ? 'native' : 'auto');
+  const isAuto = (it) => !override.has(it.id) && vodPref() === 'auto';
+  function engineFor(it) {
+    if (it.kind === 'live') return 'native';
+    if (override.has(it.id)) return override.get(it.id);
+    const pref = vodPref();
+    if (pref !== 'auto') return pref;
+    return wantsMovi(it) ? 'movi' : 'native';
+  }
+
+  async function loadAvbridge(it, url, seekMs, token) {
+    try {
+      await loadAvbridgeLib();
+    } catch {
+      if (token === loadToken && !closed) showError();
+      return;
+    }
+    if (token !== loadToken || closed) return;
+    const el = document.createElement('avbridge-video');
+    el.setAttribute('autoplay', '');
+    el.setAttribute('playsinline', '');
+    el.setAttribute('fit', 'contain');
+    abAudio = null;
+    abSub = null;
+    swapTo(el);
+    if (seekMs > 0) {
+      const once = () => {
+        el.removeEventListener('loadedmetadata', once);
+        try { el.currentTime = seekMs / 1000; } catch { /* empty */ }
+      };
+      el.addEventListener('loadedmetadata', once);
+    }
+    el.src = viaProxy(url);
+    try { const pr = el.play && el.play(); if (pr && pr.catch) pr.catch(() => {}); } catch { /* empty */ }
+  }
 
   function subAttrs(el) {
     el.setAttribute('subtitlesize', String([0.85, 1, 1.15, 1.3, 1.5][prefs.subtitleSize] || 1));
@@ -335,8 +391,11 @@ function createPlayer(items, startIndex, startMs) {
     try {
       await loadMoviLib();
     } catch {
-      moviOff.add(it.id);
-      if (token === loadToken && !closed) load(seekMs, true);
+      if (token !== loadToken || closed) return;
+      if (isAuto(it)) {
+        moviOff.add(it.id);
+        load(seekMs, true);
+      } else showError();
       return;
     }
     if (token !== loadToken || closed) return;
@@ -413,17 +472,20 @@ function createPlayer(items, startIndex, startMs) {
     const it = item();
     const url = it.kind === 'live' ? liveUrl(it.channel) : it.url;
     const token = ++loadToken;
-    // MKV/AVI: the web's own MKV player (audio languages and subtitles of the file).
-    if (wantsMovi(it)) {
+    // MKV/AVI (or the player chosen in Ajustes): the web's own players.
+    const eng = engineFor(it);
+    currentEngine = eng;
+    if (eng === 'movi' || eng === 'avbridge') {
       usingDirect = false;
       currentDirect = null;
       engines = { hls: null, ts: null };
-      loadMovi(it, url, seekMs, token);
+      if (eng === 'movi') loadMovi(it, url, seekMs, token);
+      else loadAvbridge(it, url, seekMs, token);
       renderControls();
       showControls();
       return;
     }
-    if (isMoviEl(video)) swapTo(makeVideo());
+    if (isCustom(video)) swapTo(makeVideo());
     const direct = it.kind !== 'live' && !forceProxy ? directVodUrl(url) : null;
     clearTimeout(probeTimer);
     usingDirect = !!(direct && directMemo.allowed(direct));
@@ -458,7 +520,7 @@ function createPlayer(items, startIndex, startMs) {
   }
 
   function stopEngines() {
-    if (isMoviEl(video)) {
+    if (isCustom(video)) {
       // The MKV player is thrown away whole (it frees its decoders when removed).
       try { video.pause(); } catch { /* empty */ }
       swapTo(makeVideo());
@@ -507,6 +569,10 @@ function createPlayer(items, startIndex, startMs) {
     // A movie or episode that never started: try the other player before giving up
     // (the browser's for files the MKV player can't read, and the other way round).
     if (it.kind !== 'live' && !everPlayed) {
+      if (!isAuto(it)) {
+        showError();
+        return;
+      }
       if (isMoviEl(video)) {
         moviOff.add(it.id);
         if (!nativeTried.has(it.id)) {
@@ -515,7 +581,7 @@ function createPlayer(items, startIndex, startMs) {
         }
       } else {
         nativeTried.add(it.id);
-        if (!moviOff.has(it.id) && prefs.mkvPlayer !== false && !forceMovi.has(it.id)) {
+        if (!moviOff.has(it.id) && !forceMovi.has(it.id)) {
           forceMovi.add(it.id);
           load(lastPos * 1000, true);
           return;
@@ -553,7 +619,7 @@ function createPlayer(items, startIndex, startMs) {
         ? 'Safari no reproduce archivos MKV. Ábrelo en Chrome o Edge, o en la app de la tele.'
         : 'Este archivo (MKV/AVI) puede no reproducirse en el navegador. En la app de la tele sí funciona.';
     } else if (it.kind !== 'live') {
-      hint = 'Se probó con el reproductor del navegador y con el de MKV de la web.';
+      hint = isAuto(it) ? 'Se probó con el reproductor del navegador y con el de MKV de la web.' : `Con el reproductor «${ENGINE_NAMES[currentEngine]}».`;
     } else {
       hint = 'Puede que la emisión esté caída o que haya demasiadas conexiones a la vez con tu cuenta.';
     }
@@ -565,9 +631,22 @@ function createPlayer(items, startIndex, startMs) {
       nx.addEventListener('click', () => goTo(index + 1));
       btns.append(nx);
     }
-    const mediaErr = !isMoviEl(video) && video.error ? video.error.code : 0;
+    const mediaErr = !isCustom(video) && video.error ? video.error.code : 0;
     const diag = h('div.diag', null, 'Comprobando qué pasa…');
-    errBox.replaceChildren(h('div.et', null, title), h('div.dim', null, hint), diag, btns);
+    // Movies and episodes: try the same file with another of the three players.
+    let engRow = null;
+    if (!isLive()) {
+      engRow = h('div.engrow', null, h('span', null, 'Probar con:'));
+      ['native', 'movi', 'avbridge'].filter((e) => e !== currentEngine).forEach((e) => {
+        const b = h('button.pill', { type: 'button' }, ENGINE_NAMES[e]);
+        b.addEventListener('click', () => {
+          override.set(it.id, e);
+          load(lastPos * 1000);
+        });
+        engRow.append(b);
+      });
+    }
+    errBox.replaceChildren(h('div.et', null, title), h('div.dim', null, hint), diag, btns, engRow);
     // Asks the provider for the first bytes of the file, to say what really went wrong.
     (async () => {
       const url = isLive() ? liveUrl(it.channel) : it.url;
@@ -632,7 +711,7 @@ function createPlayer(items, startIndex, startMs) {
       if (!local) shortEpg(c).then((nn) => { if (item() === it) fill(nn); });
     } else {
       titleBox.replaceChildren(h('div.ptx', null,
-        h('div.a.clamp1', null, it.kind === 'episode' && it.seriesTitle ? it.seriesTitle : it.title),
+        h('div.a.clamp1', null, it.kind === 'episode' && it.seriesTitle ? it.seriesTitle : it.title, h('span.engchip', { title: 'Reproductor en uso (se cambia en Ajustes)' }, ENGINE_NAMES[currentEngine])),
         it.kind === 'episode' ? h('div.b.clamp1', null, [it.subtitle, it.title].filter(Boolean).join('  ·  ')) : it.subtitle ? h('div.b', null, it.subtitle) : null));
       const hasNext = it.kind === 'episode' && index < items.length - 1;
       row.replaceChildren(...[back10, playBtn, fwd10, vol, time, h('div.pgrow'), hasNext ? nextEp : null, audioBtn, ccBtn, fsBtn].filter(Boolean));
@@ -808,6 +887,19 @@ function createPlayer(items, startIndex, startMs) {
 
   /** Audio tracks the browser lets us choose (HLS streams, or files in Safari). */
   function audioTracks() {
+    if (isAbEl(video)) {
+      const list = video.audioTracks || [];
+      const cur = abAudio ?? list[0]?.id;
+      return list.map((t, i) => ({
+        label: trackLabel(t, i, 'Pista'), on: t.id === cur,
+        pick: () => {
+          const pr = video.setAudioTrack(t.id);
+          if (pr && pr.catch) pr.catch(() => {});
+          abAudio = t.id;
+          if (t.language) prefs.audioLang = t.language.toLowerCase();
+        },
+      }));
+    }
     if (isMoviEl(video)) {
       const p = video.player;
       const list = (p && p.getAudioTracks && p.getAudioTracks()) || [];
@@ -862,6 +954,25 @@ function createPlayer(items, startIndex, startMs) {
     showPanel('Subtítulos', content);
   }
 
+  /** Subtitles of the file in avbridge. */
+  function openAbSubs(content) {
+    const subs = video.subtitleTracks || [];
+    content.append(h('h4', null, 'Subtítulos'));
+    content.append(panelOpt('Desactivados', abSub == null, async () => {
+      try { await video.setSubtitleTrack(null); } catch { /* empty */ }
+      abSub = null;
+      openSubs();
+    }));
+    subs.forEach((t, i) => content.append(panelOpt(trackLabel(t, i, 'Subtítulos'), t.id === abSub, async () => {
+      try { await video.setSubtitleTrack(t.id); } catch { /* empty */ }
+      abSub = t.id;
+      openSubs();
+    })));
+    if (!subs.length) content.append(h('div.dim.note', null, 'avbridge no encuentra subtítulos en este archivo.'));
+    subStyleOptions(content);
+    showPanel('Subtítulos', content);
+  }
+
   function subStyleOptions(content) {
     content.append(h('h4', null, 'Tamaño'));
     const sizes = h('div.chipset');
@@ -893,8 +1004,8 @@ function createPlayer(items, startIndex, startMs) {
       content.append(h('h4', null, 'Idioma del audio'));
       list.forEach((t) => content.append(panelOpt(t.label, t.on, () => { t.pick(); openAudio(); })));
     } else {
-      const isFile = !isLive() && !engines.hls && !isMoviEl(video);
-      content.append(h('div.dim.note', null, isMoviEl(video) ? 'Este archivo trae un solo idioma de audio.' : isFile
+      const isFile = !isLive() && !engines.hls && !isCustom(video);
+      content.append(h('div.dim.note', null, isCustom(video) ? 'Este archivo trae un solo idioma de audio.' : isFile
         ? 'El navegador no deja elegir el idioma de este archivo. Con archivos MP4, Safari sí muestra los idiomas; los MKV solo cambian de idioma en la app de la tele.'
         : 'Esta emisión trae un solo idioma de audio.'));
     }
@@ -905,6 +1016,7 @@ function createPlayer(items, startIndex, startMs) {
     panel = 'subs';
     const content = h('div.optlist');
     if (isMoviEl(video) && video.player) return openMoviSubs(content);
+    if (isAbEl(video)) return openAbSubs(content);
     const tracks = [...(video.textTracks || [])].filter((t) => t.kind === 'subtitles' || t.kind === 'captions');
     content.append(h('h4', null, 'Subtítulos'));
     content.append(panelOpt('Desactivados', !tracks.some((t) => t.mode === 'showing'), () => { tracks.forEach((t) => (t.mode = 'disabled')); openSubs(); }));
