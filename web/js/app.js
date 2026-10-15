@@ -1,7 +1,7 @@
-// nansu tv web: start-up (access, list), the main shell (side menu, header) and navigation between pages.
+// nansu tv web: start-up (access, list), the main shell (top bar) and navigation between pages.
 import { h, fmt, toast } from './util.js';
 import { focus, onKey, pushLayer, popLayer, reveal } from './nav.js';
-import { ICONS, loading, button, Preview } from './ui.js';
+import { ICONS, icon, loading, button, Preview } from './ui.js';
 import * as D from './data.js';
 import { SCREENS } from './screens.js';
 import { isPlaying } from './player.js';
@@ -32,29 +32,31 @@ export const nav = {
     }
     Preview.stop();
     const page = { factory, el: h('div.page'), disposers: [], noAutoRefresh: opts.auto === false };
+    // The main screen shares its keyboard area with the top bar.
+    page.layer = opts.withBar ? app : page.el;
     stack.push(page);
     app.append(page.el);
-    pushLayer(page.el);
+    pushLayer(page.layer);
     renderPage(page, true);
+    syncNavBar();
   },
   back() {
     if (stack.length <= 1) return false;
-    const page = stack.pop();
-    dispose(page);
-    popLayer(page.el);
-    page.el.remove();
-    const top = stack[stack.length - 1];
-    top.el.classList.remove('under');
-    if (top.dirty) {
-      top.dirty = false;
-      renderPage(top, false);
-    } else restoreState(top);
+    closeTop();
+    showTop();
+    return true;
+  },
+  /** Closes every page opened over the main screen. */
+  home() {
+    if (stack.length <= 1) return false;
+    while (stack.length > 1) closeTop();
+    showTop();
     return true;
   },
   refresh() {
     const top = stack[stack.length - 1];
     if (!top) return;
-    // The main screen only redraws the current section (menu and header stay).
+    // The main screen only redraws the current section.
     const inner = top.el.firstElementChild;
     if (inner && inner._refresh) {
       inner._refresh();
@@ -65,18 +67,35 @@ export const nav = {
   },
 };
 
+function closeTop() {
+  const page = stack.pop();
+  dispose(page);
+  popLayer(page.layer);
+  page.el.remove();
+}
+function showTop() {
+  const top = stack[stack.length - 1];
+  top.el.classList.remove('under');
+  if (top.dirty) {
+    top.dirty = false;
+    nav.refresh();
+  } else restoreState(top);
+  syncNavBar();
+}
+
 function dispose(page) {
   page.disposers.forEach((f) => { try { f(); } catch { /* empty */ } });
   page.disposers = [];
 }
 
+const SCROLLERS = '.scroll, .row, .chs';
 function saveState(page) {
   const a = document.activeElement;
   if (a && page.el.contains(a) && a.classList.contains('f')) page.fk = fkOf(a);
-  page.scroll = [...page.el.querySelectorAll('.scroll, .row, .cats, .chs')].map((s) => [s.scrollTop, s.scrollLeft]);
+  page.scroll = [...page.el.querySelectorAll(SCROLLERS)].map((s) => [s.scrollTop, s.scrollLeft]);
 }
 function restoreState(page) {
-  const scrolls = page.el.querySelectorAll('.scroll, .row, .cats, .chs');
+  const scrolls = page.el.querySelectorAll(SCROLLERS);
   (page.scroll || []).forEach(([t, l], i) => {
     if (scrolls[i]) {
       scrolls[i].scrollTop = t;
@@ -84,10 +103,12 @@ function restoreState(page) {
     }
   });
   const el = page.fk && findFk(page.el, page.fk);
-  if (el) focus(el, { instant: true });
-  else {
+  if (el) {
+    el.focus({ preventScroll: true });
+    if (document.body.classList.contains('kbd')) focus(el, { instant: true });
+  } else if (!page.scroll) {
     const first = page.el.querySelector('.f[data-default]') || page.el.querySelector('.f');
-    if (first) focus(first, { instant: true });
+    if (first) first.focus({ preventScroll: true });
   }
 }
 
@@ -103,171 +124,185 @@ function renderPage(page, fresh) {
   requestAnimationFrame(() => (fresh ? restoreState({ ...page, fk: null, scroll: null }) : restoreState(page)));
 }
 
-// Re-render after data changes (favourites, a sync, progress after the player…).
+// Catalogue changes (a sync, the guide) redraw the screen. User changes (favourites,
+// progress) update the card that changed; other pages redraw when shown again.
 let dirtyTimer;
-D.onChange(() => {
+D.onChange((scope) => {
+  stack.forEach((p, i) => { if (i < stack.length - 1) p.dirty = true; });
+  const top = stack[stack.length - 1];
+  if (scope !== 'catalog' || isPlaying()) {
+    if (top) top.dirty = true;
+    return;
+  }
   clearTimeout(dirtyTimer);
   dirtyTimer = setTimeout(() => {
-    stack.forEach((p, i) => { if (i < stack.length - 1) p.dirty = true; });
-    if (isPlaying()) {
-      const top = stack[stack.length - 1];
-      if (top) top.dirty = true;
-      return;
+    const t = stack[stack.length - 1];
+    if (t && !t.noAutoRefresh) {
+      t.dirty = false;
+      nav.refresh();
     }
-    const top = stack[stack.length - 1];
-    if (top && !top.noAutoRefresh) nav.refresh();
-  }, 250);
+  }, 400);
 });
 
-// Coming back from the player re-renders what changed (progress, captures).
+// Coming back from the player redraws what changed (progress, captures, recents).
 document.addEventListener('nt:playerclosed', () => {
   const top = stack[stack.length - 1];
-  if (top && top.dirty) {
+  if (top && top.dirty && !top.noAutoRefresh) {
     top.dirty = false;
-    renderPage(top, false);
-  } else if (top) restoreState(top);
+    nav.refresh();
+  }
 });
 
-// Back: closes pages, then goes to the side menu, then to Inicio.
+// Back: closes pages, then goes to Inicio.
 onKey((e) => {
-  const typing = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (!(e.key === 'Escape' || e.key === 'BrowserBack' || e.key === 'GoBack' || (e.key === 'Backspace' && !typing))) return false;
+  if (typing && e.key === 'Escape') {
+    document.activeElement.blur();
+    return true;
+  }
   if (nav.back()) return true;
   if (shell.handleBack()) return true;
   return true;
 });
 
-// ------------------------------------------------------------------ main shell
+// ------------------------------------------------------------------ main shell (top bar + sections)
 
 const TABS = [
-  ['home', 'Inicio', ICONS.home],
-  ['live', 'En vivo', ICONS.live],
-  ['movies', 'Películas', ICONS.movies],
-  ['series', 'Series', ICONS.series],
-  ['search', 'Buscar', ICONS.search],
-  ['settings', 'Ajustes', ICONS.settings],
+  ['home', 'Inicio'],
+  ['live', 'En vivo'],
+  ['movies', 'Películas'],
+  ['series', 'Series'],
 ];
 
 const shell = {
   tab: 'home',
-  railItems: [],
+  query: '',
+  onQuery: null,
+  links: [],
   content: null,
-  header: null,
   setTab: null,
+  bar: null,
   handleBack() {
-    const a = document.activeElement;
-    const inRail = a && a.closest && a.closest('.rail');
-    if (!inRail) {
-      const cur = this.railItems.find((r) => r.dataset.tab === this.tab);
-      if (cur) focus(cur);
-      return true;
-    }
     if (this.tab !== 'home') {
-      this.setTab('home', false);
-      focus(this.railItems[0]);
+      this.setTab('home', true);
       return true;
     }
     return true;
   },
 };
 
-function mainShell(ctx) {
-  const root = h('div.screen');
-  const content = h('div.screen', { dataset: { group: 'content', restore: 'on' } });
-  const header = h('div.header');
-  const rail = h('nav.rail', { dataset: { group: 'rail', enter: 'left' } });
-  const col = h('div.col');
-  const logo = h('div.logo', null, h('div.x'), h('div.word'));
-  col.append(logo);
-  shell.railItems = TABS.map(([key, label, icon]) => {
-    const b = h('button.ri.f', { tabIndex: -1, type: 'button', dataset: { tab: key } });
-    b.innerHTML = icon;
-    b.append(h('span.lbl', null, label));
-    let t;
-    b.addEventListener('focus', () => {
-      clearTimeout(t);
-      t = setTimeout(() => { if (document.activeElement === b) setTab(key, false); }, 550);
-    });
-    b.addEventListener('click', () => {
-      setTab(key, true);
-    });
-    col.append(b);
+/** The bar turns solid once the page under it scrolls. */
+function syncNavBar() {
+  const bar = shell.bar;
+  if (!bar) return;
+  const top = stack[stack.length - 1];
+  const sc = top && top.el.querySelector('.scroll');
+  bar.classList.toggle('solid', !!sc && sc.scrollTop > 8);
+  bar.classList.toggle('onpage', stack.length > 1);
+}
+document.addEventListener('scroll', (e) => {
+  const t = e.target;
+  if (shell.bar && t.classList && t.classList.contains('scroll')) shell.bar.classList.toggle('solid', t.scrollTop > 8);
+}, { capture: true, passive: true });
+
+function topBar() {
+  const bar = h('header.topnav', { dataset: { group: 'topnav', enter: 'up' } });
+  const brand = h('button.brand.f', { tabIndex: -1, type: 'button', title: 'Inicio', 'aria-label': 'Inicio' });
+  brand.addEventListener('click', () => goTab('home'));
+  const links = h('nav.links');
+  shell.links = TABS.map(([key, label]) => {
+    const b = h('button.lnk.f', { tabIndex: -1, type: 'button', dataset: { tab: key } }, label);
+    b.addEventListener('click', () => goTab(key));
+    links.append(b);
     return b;
   });
-  const prof = h('button.ri.f.profile', { tabIndex: -1, type: 'button' }, h('span.avatar', null, 'P'), h('span.lbl', null, 'Principal'));
-  prof.addEventListener('click', () => setTab('settings', true));
-  col.append(prof);
-  rail.append(col);
-
-  // Menu opens when it has focus; previews pause meanwhile.
-  let open = false;
-  const setOpen = (o) => {
-    if (o === open) return;
-    open = o;
-    rail.classList.toggle('open', o);
-    const x = logo.querySelector('.x');
-    x.classList.remove('spin', 'unspin');
-    void x.offsetWidth;
-    if (!D.prefs.reduceMotion) x.classList.add(o ? 'spin' : 'unspin');
-    Preview.paused = o;
-    if (o) Preview.stop();
+  const input = h('input.f', { type: 'search', placeholder: 'Buscar', autocomplete: 'off', spellcheck: false, 'aria-label': 'Buscar canales, películas y series' });
+  const search = h('label.searchbox', null, icon('search'), input);
+  input.addEventListener('input', () => {
+    shell.query = input.value;
+    if (stack.length > 1) nav.home();
+    if (input.value.trim() && shell.tab !== 'search') shell.setTab('search', false);
+    else if (shell.onQuery) shell.onQuery(input.value);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      const first = shell.content && shell.content.querySelector('.f');
+      if (first) focus(first);
+    }
+  });
+  shell.searchInput = input;
+  const statusEl = h('div.status');
+  const clockEl = h('span.clock');
+  const gear = h('button.iconbtn.f', { tabIndex: -1, type: 'button', title: 'Ajustes', 'aria-label': 'Ajustes', dataset: { tab: 'settings' }, html: ICONS.settings });
+  gear.addEventListener('click', () => goTab('settings'));
+  shell.links.push(gear);
+  bar.append(brand, links, h('div.grow'), statusEl, search, gear, clockEl);
+  const tick = () => { clockEl.textContent = fmt.clock(Date.now()); };
+  tick();
+  clearInterval(shell.clockTimer);
+  shell.clockTimer = setInterval(tick, 15000);
+  shell.status = (msg) => {
+    statusEl.replaceChildren();
+    statusEl.title = msg || '';
+    if (msg) statusEl.append(h('div.spinner'), h('span.clamp1', null, msg));
   };
-  rail.addEventListener('focusin', () => setOpen(true));
-  rail.addEventListener('focusout', () => setTimeout(() => setOpen(rail.contains(document.activeElement)), 0));
-  rail.addEventListener('mouseenter', () => setOpen(true));
-  rail.addEventListener('mouseleave', () => setOpen(rail.contains(document.activeElement)));
-  // Entering the menu lands on the current section.
-  rail._entry = () => shell.railItems.find((r) => r.dataset.tab === shell.tab);
-  // → from the menu goes back to where the user was in the content.
-  rail._dir = (dir) => {
-    if (dir !== 'right') return false;
-    const last = content._last;
-    if (last && last.isConnected) focus(last);
+  shell.status(syncMessage);
+  // ↓ from the bar goes back to where the user was in the content.
+  bar._dir = (dir) => {
+    if (dir !== 'down') return false;
+    const content = shell.content;
+    const last = content && content._last;
+    if (last && last.isConnected && content.contains(last)) focus(last);
     else {
-      const first = content.querySelector('.f[data-default]') || content.querySelector('.f');
+      const first = content && (content.querySelector('.f[data-default]') || content.querySelector('.f'));
       if (first) focus(first);
     }
     return true;
   };
+  bar._entry = () => shell.links.find((l) => l.dataset.tab === shell.tab) || shell.links[0];
+  shell.bar = bar;
+  return bar;
+}
 
-  // Header: section, date, sync status, clock.
-  const titleEl = h('span.t-title');
-  const dateEl = h('span.t-label.faint');
-  const statusEl = h('div.status');
-  const clockEl = h('span.t-title');
-  header.append(h('div.in', null, titleEl, dateEl, h('div.grow'), statusEl, clockEl));
-  const tick = () => {
-    clockEl.textContent = fmt.clock(Date.now());
-    dateEl.textContent = fmt.longDate(Date.now());
-  };
-  tick();
-  const clock = setInterval(tick, 15000);
-  ctx.cleanup(() => clearInterval(clock));
-  shell.status = (msg) => {
-    statusEl.replaceChildren();
-    if (msg) statusEl.append(h('div.spinner'), h('span', null, msg));
-  };
-  shell.status(syncMessage);
+function goTab(key) {
+  nav.home();
+  if (key !== 'search' && shell.searchInput) {
+    shell.searchInput.value = '';
+    shell.query = '';
+  }
+  shell.setTab(key, false);
+  const sc = shell.content && shell.content.querySelector('.scroll');
+  if (sc) sc.scrollTop = 0;
+  syncNavBar();
+}
+
+function mainShell(ctx) {
+  const root = h('div.screen');
+  const content = h('div.screen', { dataset: { group: 'content' } });
 
   let screenCleanup = [];
   function renderTab(fk, scrolls) {
     screenCleanup.forEach((f) => { try { f(); } catch { /* empty */ } });
     screenCleanup = [];
+    shell.onQuery = null;
     Preview.stop();
-    header.classList.remove('hidden');
     const sctx = {
       cleanup: (fn) => screenCleanup.push(fn),
       push: nav.push,
-      setHeaderHidden: (b) => header.classList.toggle('hidden', b),
-      selectTab: (t) => setTab(t, true),
+      selectTab: (t) => goTab(t),
+      query: () => shell.query,
+      onQuery: (fn) => { shell.onQuery = fn; },
       refresh: () => {
         const a = document.activeElement;
-        renderTab(a && content.contains(a) && a.classList.contains('f') ? fkOf(a) : null);
+        const scrolls = [...content.querySelectorAll('.scroll, .row')].map((s) => [s.scrollTop, s.scrollLeft]);
+        renderTab(a && content.contains(a) && a.classList.contains('f') ? fkOf(a) : null, scrolls);
       },
     };
     content.replaceChildren(SCREENS[shell.tab](sctx));
-    titleEl.textContent = TABS.find((t) => t[0] === shell.tab)[1];
-    shell.railItems.forEach((r) => r.classList.toggle('cur', r.dataset.tab === shell.tab));
+    shell.links.forEach((r) => r.classList.toggle('cur', r.dataset.tab === shell.tab));
     if (scrolls) {
       const now = content.querySelectorAll('.scroll, .row');
       scrolls.forEach(([t, l], i) => {
@@ -278,9 +313,10 @@ function mainShell(ctx) {
       });
     }
     if (fk) requestAnimationFrame(() => {
-      const el = findFk(content, fk) || content.querySelector('.f[data-default]');
-      if (el) focus(el, { instant: true });
+      const el = findFk(content, fk);
+      if (el) el.focus({ preventScroll: true });
     });
+    syncNavBar();
   }
   ctx.cleanup(() => screenCleanup.forEach((f) => { try { f(); } catch { /* empty */ } }));
 
@@ -299,12 +335,9 @@ function mainShell(ctx) {
   }
   shell.setTab = setTab;
   shell.content = content;
-  shell.header = header;
 
-  const a = document.activeElement;
-  const fk = a && a.classList && a.classList.contains('f') && app.contains(a) ? fkOf(a) : null;
-  renderTab(fk);
-  root.append(content, header, rail);
+  renderTab();
+  root.append(content);
   root._refresh = () => {
     const a = document.activeElement;
     const inContent = a && content.contains(a) && a.classList.contains('f');
@@ -381,8 +414,8 @@ function playlistScreen(first) {
     const m3u = h('input.input.f', { placeholder: 'Dirección de la lista M3U', autocomplete: 'off' });
     const epg = h('input.input.f', { placeholder: 'Guía XMLTV (opcional)', autocomplete: 'off' });
     const err = h('div.err');
-    const xBox = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '1.2rem' } }, server, user, pass);
-    const mBox = h('div', { style: { display: 'none', flexDirection: 'column', gap: '1.2rem' } }, m3u, epg);
+    const xBox = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, server, user, pass);
+    const mBox = h('div', { style: { display: 'none', flexDirection: 'column', gap: '12px' } }, m3u, epg);
     const tabs = h('div.seg', { dataset: { group: 'pltype' } });
     const tX = h('button.tab.f.on', { tabIndex: -1, type: 'button' }, 'Xtream Codes');
     const tM = h('button.tab.f', { tabIndex: -1, type: 'button' }, 'Lista M3U');
@@ -424,7 +457,7 @@ function playlistScreen(first) {
     };
     const btn = button('Guardar y cargar', save, { primary: true });
     const page = h('div.center', { style: { overflowY: 'auto' } },
-      h('div.brand-big', { style: { width: '18rem', height: '5.6rem' } }),
+      h('div.brand-big', { style: { width: '170px', height: '54px' } }),
       h('div.form', null,
         h('div.t-title', { style: { textAlign: 'center' } }, 'Añade tu lista'),
         h('div.dim', { style: { textAlign: 'center' } }, 'Los datos se quedan en este navegador. La web no incluye contenido.'),
@@ -447,7 +480,7 @@ function syncScreen() {
         backgroundRefresh();
       } catch (e) {
         err.textContent = e.message;
-        wrap.append(button('Reintentar', () => { app.replaceChildren(); stack.length = 0; nav.push(syncScreen(), { auto: false }); }, { primary: true }),
+        wrap.append(button('Reintentar', () => { resetStack(); app.replaceChildren(); shell.bar = null; nav.push(syncScreen(), { auto: false }); }, { primary: true }),
           button('Cambiar la lista', async () => { await D.forgetPlaylist(); start(); }));
       }
     })();
@@ -470,23 +503,31 @@ export function runSync(force) {
   })();
 }
 
-function showMain() {
-  for (const p of stack) dispose(p);
+function resetStack() {
+  for (const p of stack) {
+    dispose(p);
+    popLayer(p.layer);
+  }
   stack.length = 0;
+}
+
+function showMain() {
+  resetStack();
   app.replaceChildren();
   try {
     const t = sessionStorage.getItem('nt:tab');
-    if (t && SCREENS[t]) shell.tab = t;
+    if (t && SCREENS[t] && t !== 'search') shell.tab = t;
   } catch { /* empty */ }
-  nav.push(mainShell);
+  app.append(topBar());
+  nav.push(mainShell, { withBar: true });
 }
 
 export const appApi = { nav, runSync, showMain, playlistScreen, shell };
 window.__nt = appApi;
 
 async function start() {
-  for (const p of stack) dispose(p);
-  stack.length = 0;
+  resetStack();
+  shell.bar = null;
   app.replaceChildren(loading());
   let st;
   try {
@@ -521,3 +562,4 @@ async function start() {
 start();
 
 export { reveal, popLayer };
+

@@ -26,17 +26,44 @@ export function onKey(fn) {
   };
 }
 
+// Cheap visibility test (no getComputedStyle: it made every key press slow on big lists).
 function visible(el) {
   if (!el.isConnected) return false;
   const r = el.getBoundingClientRect();
   if (r.width < 2 || r.height < 2) return false;
-  const st = getComputedStyle(el);
-  return st.visibility !== 'hidden' && st.display !== 'none';
+  return !el.closest('.under, [hidden], .closed');
 }
 
 function focusables(root) {
   return [...root.querySelectorAll('.f')].filter((el) => !el.disabled && !el.closest('[inert]') && visible(el));
 }
+
+/** First item that is on screen now (for the first arrow press after using the mouse). */
+function firstOnScreen(root) {
+  const top = navHeight();
+  let best = null, bestY = Infinity;
+  for (const el of focusables(root)) {
+    const r = el.getBoundingClientRect();
+    if (r.top < top - 4 || r.bottom > innerHeight + 4 || r.left < -4 || r.right > innerWidth + 4) continue;
+    const y = r.top * 4 + r.left;
+    if (y < bestY) { bestY = y; best = el; }
+  }
+  return best;
+}
+
+export function navHeight() {
+  const n = document.querySelector('.topnav');
+  return n && !n.closest('.under') ? n.getBoundingClientRect().height : 0;
+}
+
+// Keyboard or mouse: focus rings only show for the keyboard (the mouse has hover).
+document.addEventListener('keydown', (e) => {
+  if (KEYS[e.key] || e.key === 'Tab' || e.key === 'Enter') document.body.classList.add('kbd');
+}, true);
+document.addEventListener('pointerdown', () => document.body.classList.remove('kbd'), true);
+document.addEventListener('pointermove', (e) => {
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) > 6) document.body.classList.remove('kbd');
+}, { capture: true, passive: true });
 
 function center(r) {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
@@ -140,11 +167,11 @@ export function reveal(el, instant) {
     const sr = scroller.getBoundingClientRect();
     const block = el.closest('.shelf') || el;
     const br = block.getBoundingClientRect();
-    const top = sr.top + rem(4);
-    const bottom = sr.bottom - rem(2.8);
+    const top = Math.max(sr.top, navHeight()) + 16;
+    const bottom = sr.bottom - 24;
     if (br.top >= top && br.bottom <= bottom) return;
     let delta = br.top - top;
-    if (br.height > sr.height - rem(4)) {
+    if (br.height > bottom - top) {
       const er = el.getBoundingClientRect();
       delta = er.top - top;
     }
@@ -152,9 +179,6 @@ export function reveal(el, instant) {
   }
 }
 
-export function rem(n) {
-  return n * parseFloat(getComputedStyle(document.documentElement).fontSize);
-}
 
 document.addEventListener('keydown', (e) => {
   for (let i = keyHandlers.length - 1; i >= 0; i--) {
@@ -171,9 +195,7 @@ document.addEventListener('keydown', (e) => {
     const root = topLayer();
     let from = active && active.classList && active.classList.contains('f') && root.contains(active) ? active : null;
     if (!from) {
-      const content = root.querySelector('[data-group="content"]');
-      const last = content && content._last && content._last.isConnected ? content._last : null;
-      const first = last || root.querySelector('.f[data-default]') || focusables(root)[0];
+      const first = firstOnScreen(root) || focusables(root)[0];
       if (first) focus(first);
       e.preventDefault();
       return;
@@ -189,7 +211,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return;
   }
-  if ((e.key === 'Enter' || e.key === ' ') && active && active.classList.contains('f') && !typing) {
+  if ((e.key === 'Enter' || (e.key === ' ' && document.body.classList.contains('kbd'))) && active && active.classList.contains('f') && !typing && active.tagName !== 'SELECT') {
     e.preventDefault();
     active.click();
   }

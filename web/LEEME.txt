@@ -33,12 +33,19 @@ volver a entrar te pedirá crear una nueva.
 
 Cómo se usa
 -----------
-- Con el teclado, igual que con el mando: flechas para moverte, Intro para
-  elegir, Esc o Retroceso para volver. Mantén Intro (o clic derecho) sobre una
-  película, serie o canal para añadirlo a Mi lista o a favoritos.
-- También funciona con ratón y en pantallas táctiles.
-- Reproductor: en directo ▲ ▼ cambian de canal, Intro abre la lista de canales
-  y los números van a un canal. En películas y series ◀ ▶ avanzan y Intro pausa.
+- Con el ratón: menú arriba (Inicio, En vivo, Películas, Series, buscador y
+  ajustes). Pasa el ratón por una fila para ver las flechas, y por una
+  carátula para ver el botón + (Mi lista) o el corazón (canales favoritos).
+- En vivo: debajo de los destacados está la lista de todos los canales, con
+  filtros (Favoritos, Recientes, temas), categorías y buscador por nombre o
+  número.
+- Reproductor: mueve el ratón para ver los controles. Clic pausa, doble clic
+  pantalla completa, la rueda sube y baja el volumen. En directo tienes canal
+  anterior/siguiente y la lista de canales con buscador.
+- También con el teclado, como con el mando: flechas para moverte, Intro para
+  elegir, Esc para volver. En el reproductor: Espacio pausa, ◀ ▶ 10 segundos,
+  ▲ ▼ volumen (en directo cambian de canal), F pantalla completa, M silencio,
+  C subtítulos, L lista de canales y los números van a un canal.
 
 
 Ten en cuenta

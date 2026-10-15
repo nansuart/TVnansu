@@ -137,7 +137,9 @@ for ($hop = 0; $hop < 6; $hop++) {
                 if (isset($headers['content-length']) && !isset($headers['content-encoding'])) {
                     header('Content-Length: ' . $headers['content-length']);
                 }
-                header('Cache-Control: no-store');
+                // Pictures can be cached by the browser for a week; the rest is live data.
+                $isImage = str_starts_with(strtolower($headers['content-type'] ?? ''), 'image/');
+                header($isImage ? 'Cache-Control: private, max-age=604800' : 'Cache-Control: no-store');
                 header('X-Accel-Buffering: no');
             }
             echo $data;

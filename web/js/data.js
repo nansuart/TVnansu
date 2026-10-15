@@ -52,6 +52,8 @@ const PREF_DEFAULTS = {
   subtitleBackground: false,
   liveFormat: 'm3u8',
   direct: false,
+  volume: 1,
+  muted: false,
 };
 export const prefs = (() => {
   let saved = {};
@@ -133,10 +135,11 @@ export function onChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
-function changed() {
+/** 'catalog' when lists or guide change (clears computed rows); 'user' for favourites, recents, progress. */
+function changed(scope = 'user') {
   S.version++;
-  memo.clear();
-  for (const fn of listeners) fn();
+  if (scope === 'catalog') memo.clear();
+  for (const fn of listeners) fn(scope);
 }
 
 const memo = new Map();
@@ -167,7 +170,9 @@ export async function loadAll() {
     S.epg = new Map(epg.map);
     S.epgAt = epg.at;
   }
-  changed();
+  const bd = (await kvGet('backdrops')) || {};
+  for (const m of S.vod) if (bd[m.id]) m.backdrop = bd[m.id];
+  changed('catalog');
 }
 
 export async function savePlaylist(pl) {
@@ -181,7 +186,7 @@ export async function forgetPlaylist() {
   S.live = S.vod = S.series = [];
   S.cats = { live: [], vod: [], series: [] };
   S.epg = new Map();
-  changed();
+  changed('catalog');
 }
 
 // ------------------------------------------------------------------ Xtream
@@ -269,12 +274,14 @@ export async function sync(progress = () => {}) {
     if (!pl.epg && res.epg) pl.epg = res.epg;
   }
   S.lastSync = Date.now();
+  const bd = (await kvGet('backdrops')) || {};
+  for (const m of S.vod) if (bd[m.id]) m.backdrop = bd[m.id];
   progress('Guardando…');
   await Promise.all([
     kvSet('playlist', pl), kvSet('cats', S.cats), kvSet('live', S.live), kvSet('vod', S.vod),
     kvSet('series', S.series), kvSet('lastSync', S.lastSync),
   ]);
-  changed();
+  changed('catalog');
 }
 
 export function epgUrl() {
@@ -288,11 +295,13 @@ export function epgUrl() {
 export async function syncEpg(progress = () => {}) {
   const url = epgUrl();
   if (!url) return false;
-  const res = await runWorker({ cmd: 'xmltv', url: absolute(viaProxy(url)) }, progress);
+  // Only the channels of this list, and only the next hours: keeps memory small.
+  const ids = [...new Set(S.live.map((c) => c.epg).filter(Boolean))];
+  const res = await runWorker({ cmd: 'xmltv', url: absolute(viaProxy(url)), ids }, progress);
   S.epg = new Map(res.map);
   S.epgAt = Date.now();
   await kvSet('epg', { at: S.epgAt, map: res.map });
-  changed();
+  changed('catalog');
   return true;
 }
 
@@ -409,7 +418,12 @@ export async function prefetchBackdrops(movies) {
       if (d?.backdrop) changedAny = true;
     } catch { /* ignore */ }
   }
-  if (changedAny) kvSet('vod', S.vod);
+  if (changedAny) {
+    const bd = (await kvGet('backdrops')) || {};
+    for (const m of movies) if (m.backdrop) bd[m.id] = m.backdrop;
+    kvSet('backdrops', bd);
+    memo.clear();
+  }
   return changedAny;
 }
 
@@ -601,9 +615,20 @@ export function recommendedSeries(n = 30) {
   });
 }
 
+/** Items of each category, newest first (built once per catalogue). */
+export function catIndex(kind) {
+  return cached('catIndex:' + kind, () => {
+    const map = new Map();
+    for (const x of kind === 'series' ? S.series : kind === 'live' ? S.live : S.vod) {
+      if (!map.has(x.cat)) map.set(x.cat, []);
+      map.get(x.cat).push(x);
+    }
+    if (kind !== 'live') for (const l of map.values()) l.sort(byAdded);
+    return map;
+  });
+}
 export function inCategory(kind, catId, n = 40) {
-  const list = kind === 'series' ? S.series : S.vod;
-  return cached(`cat:${kind}:${catId}:${n}`, () => list.filter((x) => x.cat === catId).sort(byAdded).slice(0, n));
+  return (catIndex(kind).get(catId) || []).slice(0, n);
 }
 
 export function similarMovies(m, n = 20) {
@@ -644,11 +669,20 @@ export function similarSeries(s, n = 20) {
     .slice(0, n);
 }
 
+/** "Película" → "pelicula", to search without caring about accents or case. */
+export const fold = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
 export function search(q) {
-  const k = q.trim().toLowerCase();
+  const k = fold(q.trim());
   if (k.length < 2) return { live: [], vod: [], series: [] };
-  const f = (list) => list.filter((x) => x.name.toLowerCase().includes(k)).slice(0, 40);
-  return { live: f(S.live), vod: f(S.vod), series: f(S.series) };
+  const words = k.split(/\s+/).filter(Boolean);
+  const f = (key, list) => {
+    const names = cached('fold:' + key, () => list.map((x) => fold(x.name)));
+    const out = [];
+    for (let i = 0; i < list.length && out.length < 40; i++) if (words.every((w) => names[i].includes(w))) out.push(list[i]);
+    return out;
+  };
+  return { live: f('live', S.live), vod: f('vod', S.vod), series: f('series', S.series) };
 }
 
 // ------------------------------------------------------------------ user data

@@ -5,7 +5,7 @@ self.onmessage = async (e) => {
   const msg = e.data;
   try {
     if (msg.cmd === 'm3u') self.postMessage({ result: await parseM3u(msg.url) });
-    else if (msg.cmd === 'xmltv') self.postMessage({ result: await parseXmltv(msg.url) });
+    else if (msg.cmd === 'xmltv') self.postMessage({ result: await parseXmltv(msg.url, msg.ids) });
   } catch (err) {
     self.postMessage({ error: err && err.message ? err.message : String(err) });
   }
@@ -125,10 +125,11 @@ function decode(s) {
     .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)));
 }
 
-async function parseXmltv(url) {
+async function parseXmltv(url, ids) {
   const reader = await textStream(url);
+  const wanted = ids && ids.length ? new Set(ids) : null;
   const now = Date.now();
-  const from = now - 3 * 3600000, to = now + 36 * 3600000;
+  const from = now - 2 * 3600000, to = now + 14 * 3600000;
   const map = new Map();
   const re = /<programme\b([^>]*)>([\s\S]*?)<\/programme>/g;
   let buf = '';
@@ -149,8 +150,9 @@ async function parseXmltv(url) {
       const t = /<title[^>]*>([\s\S]*?)<\/title>/.exec(m[2]);
       const d = /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(m[2]);
       const id = decode(ch[1]);
+      if (wanted && !wanted.has(id)) continue;
       if (!map.has(id)) map.set(id, []);
-      map.get(id).push({ s, e, t: t ? decode(t[1]).trim() : '', d: d ? decode(d[1]).trim().slice(0, 400) : '' });
+      map.get(id).push({ s, e, t: t ? decode(t[1]).trim() : '', d: d ? decode(d[1]).trim().slice(0, 240) : '' });
       if (++n % 20000 === 0) progress(`Guía: ${n.toLocaleString('es-ES')} programas…`);
     }
     buf = buf.slice(last);
