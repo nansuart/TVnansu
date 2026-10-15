@@ -13,7 +13,9 @@ function nt_session(): void
         || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
     $life = 60 * 60 * 24 * 120;
     ini_set('session.gc_maxlifetime', (string)$life);
-    session_name('nansutv');
+    // Browsers don't let an http page replace a "secure" cookie set over https with the
+    // same name, so the http address of the site uses its own session cookie.
+    session_name($secure ? 'nansutv' : 'nansutv_http');
     session_set_cookie_params([
         'lifetime' => $life,
         'path' => '/',
