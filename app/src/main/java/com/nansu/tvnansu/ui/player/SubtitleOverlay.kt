@@ -70,7 +70,7 @@ fun SubtitleOverlay(
             CueBlock(top, style, background, Modifier.align(Alignment.TopCenter).padding(top = 34.dp))
         }
         if (bottom.isNotEmpty()) {
-            CueBlock(bottom, style, background, Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp + lift))
+            CueBlock(bottom, style, background, Modifier.align(Alignment.BottomCenter).padding(bottom = 58.dp + lift))
         }
     }
 }
