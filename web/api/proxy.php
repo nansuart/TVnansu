@@ -102,6 +102,29 @@ if (!$safari && $range && preg_match('/^bytes=(\d+)-$/', trim($range), $m)) {
 $current = $url;
 $isPlaylistUrl = fn(string $u) => (bool)preg_match('~\.m3u8($|\?)~i', $u);
 
+// One video request at a time towards the provider. Players (the browser's and the MKV
+// one) sometimes ask for two pieces at once, or leave one running when the user jumps;
+// most IPTV accounts allow a single connection and refuse (or block for a while) the
+// second. Requests for pieces of a file wait here for the previous one to finish.
+$lock = null;
+if ($range && !$head) {
+    $dir = DATA_DIR . '/locks';
+    if (!is_dir($dir)) @mkdir($dir, 0700, true);
+    $lock = @fopen($dir . '/' . md5((string)parse_url($url, PHP_URL_HOST)) . '.lock', 'c+');
+    if ($lock) {
+        $until = microtime(true) + 25;
+        while (!flock($lock, LOCK_EX | LOCK_NB)) {
+            if (microtime(true) > $until || connection_aborted()) break; // never wait forever
+            usleep(100000);
+        }
+        // The provider takes a moment to notice that the previous connection closed.
+        $last = (float)stream_get_contents($lock, 32, 0);
+        $gap = microtime(true) - $last;
+        if ($last > 0 && $gap < 0.5) usleep((int)((0.5 - $gap) * 1000000));
+    }
+}
+$refusedTries = 0;
+
 for ($hop = 0; $hop < 6; $hop++) {
     if (!nt_allowed($current)) nt_json(['error' => 'blocked'], 403);
 
@@ -111,6 +134,7 @@ for ($hop = 0; $hop < 6; $hop++) {
     $started = false;
     $playlist = $isPlaylistUrl($current);
     $buffer = '';
+    $refused = false;
 
     $ch = curl_init($current);
     $reqHeaders = ['Accept: */*', 'Connection: close'];
@@ -143,8 +167,13 @@ for ($hop = 0; $hop < 6; $hop++) {
             }
             return $len;
         },
-        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint, $range, &$sent) {
+        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint, $range, &$sent, &$refused, $refusedTries) {
             if ($status >= 300 && $status < 400) return strlen($data); // redirect body: ignore
+            // "Too many connections" for a piece of a file: try again in a moment (below).
+            if (!$started && $range && $refusedTries < 2 && in_array($status, [403, 429, 458, 503, 509], true)) {
+                $refused = true;
+                return strlen($data);
+            }
             $type = strtolower($headers['content-type'] ?? '');
             if (!$started && (str_contains($type, 'mpegurl'))) $playlist = true;
             if ($playlist) {
@@ -181,6 +210,12 @@ for ($hop = 0; $hop < 6; $hop++) {
         },
     ]);
     curl_exec($ch);
+    if ($lock && !$refused) {
+        @ftruncate($lock, 0);
+        @rewind($lock);
+        @fwrite($lock, (string)microtime(true));
+        @fflush($lock);
+    }
     $err = curl_errno($ch);
     $errMsg = curl_error($ch);
     $effective = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL) ?: $current;
@@ -188,6 +223,12 @@ for ($hop = 0; $hop < 6; $hop++) {
 
     if ($status >= 300 && $status < 400 && $location) {
         $current = nt_resolve($current, $location);
+        continue;
+    }
+    if ($refused && !$started) {
+        $refusedTries++;
+        $hop--;
+        usleep(900000 * $refusedTries);
         continue;
     }
     if ($head) {

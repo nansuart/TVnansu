@@ -339,7 +339,7 @@ function createPlayer(items, startIndex, startMs) {
     if (token !== loadToken || closed) return;
     const el = document.createElement('movi-player');
     el.setAttribute('wasmurl', new URL('lib/movi/movi.wasm', location.href).href);
-    el.setAttribute('buffersize', '64'); // read about a minute ahead, not the whole film
+    el.setAttribute('buffersize', '48'); // read about a minute ahead, not the whole film
     el.setAttribute('nohotkeys', '');
     el.setAttribute('noerrorscreen', '');
     el.setAttribute('spinnerdelay', '600');
@@ -351,7 +351,25 @@ function createPlayer(items, startIndex, startMs) {
     moviAudio = null;
     moviSub = null;
     swapTo(el);
+    styleMoviSubs(el);
     el.setAttribute('src', viaProxy(url));
+  }
+
+  /** Subtitles like the TV app: Inter Medium with a soft outline (or the dark box). */
+  function styleMoviSubs(el, tries = 0) {
+    const root = el.shadowRoot;
+    if (!root) {
+      if (tries < 20) setTimeout(() => styleMoviSubs(el, tries + 1), 50);
+      return;
+    }
+    let st = root.querySelector('style[data-nt]');
+    if (!st) {
+      st = document.createElement('style');
+      st.dataset.nt = '';
+      root.append(st);
+    }
+    const shadow = prefs.subtitleBackground ? 'none' : '0 0 3px rgba(0,0,0,.95), 0 1px 2px rgba(0,0,0,.9), 0 2px 10px rgba(0,0,0,.6)';
+    st.textContent = `.movi-subtitle-line { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif !important; font-weight: 500 !important; letter-spacing: .005em; line-height: 1.25 !important; text-shadow: ${shadow} !important; -webkit-font-smoothing: antialiased; }`;
   }
 
   /** Puts back the languages chosen last time (audio and subtitles), if the file has them. */
@@ -534,13 +552,21 @@ function createPlayer(items, startIndex, startMs) {
 
   // ------------------------------------------------------------ controls
 
+  /** MKV subtitles move up while the controls are on screen, so they never sit under them. */
+  function liftSubs(on) {
+    if (!isMoviEl(video)) return;
+    try { video.player?.setSubtitleControlsPadding?.(on ? 96 : 0); } catch { /* empty */ }
+  }
+
   function showControls() {
     root.classList.remove('hidectl', 'idle');
     mosca.classList.remove('on');
+    liftSubs(true);
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
       if (panel || overBar || dragging || (!isLive() && video.paused) || errBox.style.display !== 'none') return;
       root.classList.add('hidectl', 'idle');
+      liftSubs(false);
       if (isLive() && prefs.watermark) mosca.classList.add('on');
     }, 2800);
   }
@@ -813,7 +839,10 @@ function createPlayer(items, startIndex, startMs) {
     const style = (bg) => () => {
       prefs.subtitleBackground = bg;
       document.body.classList.toggle('subbg', bg);
-      if (isMoviEl(video)) subAttrs(video);
+      if (isMoviEl(video)) {
+        subAttrs(video);
+        styleMoviSubs(video);
+      }
       openSubs();
     };
     content.append(panelOpt('Sin fondo', !prefs.subtitleBackground, style(false)));
