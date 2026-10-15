@@ -9,3 +9,6 @@ local.properties
 
 captures/
 .kotlin/
+
+# nansu tv web: per-install password
+web/api/data/password.php
