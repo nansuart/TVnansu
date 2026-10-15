@@ -711,7 +711,7 @@ function createPlayer(items, startIndex, startMs) {
       if (!local) shortEpg(c).then((nn) => { if (item() === it) fill(nn); });
     } else {
       titleBox.replaceChildren(h('div.ptx', null,
-        h('div.a.clamp1', null, it.kind === 'episode' && it.seriesTitle ? it.seriesTitle : it.title, h('span.engchip', { title: 'Reproductor en uso (se cambia en Ajustes)' }, ENGINE_NAMES[currentEngine])),
+        h('div.a.clamp1', null, it.kind === 'episode' && it.seriesTitle ? it.seriesTitle : it.title, h('span.engchip', { title: 'Reproductor en uso (se cambia en Ajustes) y por dónde llega el vídeo' }, `${ENGINE_NAMES[currentEngine]} · ${usingDirect ? 'directo' : 'por tu hosting'}`)),
         it.kind === 'episode' ? h('div.b.clamp1', null, [it.subtitle, it.title].filter(Boolean).join('  ·  ')) : it.subtitle ? h('div.b', null, it.subtitle) : null));
       const hasNext = it.kind === 'episode' && index < items.length - 1;
       row.replaceChildren(...[back10, playBtn, fwd10, vol, time, h('div.pgrow'), hasNext ? nextEp : null, audioBtn, ccBtn, fsBtn].filter(Boolean));

@@ -491,7 +491,8 @@ export function directVodUrl(raw) {
 /** Remembers per server whether direct playback worked (a failure is retried after a day). */
 export const directMemo = {
   key: (url) => {
-    try { return 'nt:direct:' + new URL(url).host; } catch { return 'nt:direct:?'; }
+    // Per page address too: what failed from https (mixed content) may work from http.
+    try { return 'nt:direct:' + location.protocol + new URL(url).host; } catch { return 'nt:direct:?'; }
   },
   allowed(url) {
     try {
