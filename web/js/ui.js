@@ -25,6 +25,7 @@ export const ICONS = {
   next: svg('<path d="M6 5v14l10-7z" fill="currentColor"/><path d="M18 5v14"/>'),
   vol: svg('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>'),
   mute: svg('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>'),
+  audio: svg('<path d="M4.5 5.5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4.5 3.5v-3.5h-1a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/><path d="m9 14 3-6.5 3 6.5M10 12h4"/>'),
   cc: svg('<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M10.5 10.3a2.3 2.3 0 1 0 0 3.4M17 10.3a2.3 2.3 0 1 0 0 3.4"/>'),
   list: svg('<path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h11"/><circle cx="4.5" cy="6.5" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="17.5" r="1" fill="currentColor"/>'),
   fs: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
@@ -440,6 +441,7 @@ export const Preview = {
   stop() {
     if (this.current) this.current.stop();
     this.current = null;
+    if (tourSnap) tourSnap.abort();
   },
 };
 document.addEventListener('visibilitychange', () => {
@@ -486,6 +488,7 @@ export function livePreview(channel, { delay = 1800 } = {}) {
       return;
     }
     if (Preview.current && Preview.current !== ctl) Preview.current.stop();
+    if (tourSnap) tourSnap.abort();
     Preview.current = ctl;
     attachStream(video, liveUrl(channel), true, (o) => { hls = o.hls; ts = o.ts; }, () => ctl.stop());
   };
@@ -499,10 +502,10 @@ export function livePreview(channel, { delay = 1800 } = {}) {
   return ctl;
 }
 
-/** Saves the frame on screen (small JPEG) as the channel's capture. */
+/** Saves the frame on screen (small JPEG) as the channel's capture. True when saved. */
 export function grab(video, id) {
   try {
-    if (!video.videoWidth) return;
+    if (!video.videoWidth) return false;
     const c = document.createElement('canvas');
     c.width = 480;
     c.height = Math.round((480 * video.videoHeight) / video.videoWidth) || 270;
@@ -511,25 +514,100 @@ export function grab(video, id) {
     const px = g.getImageData(0, 0, c.width, c.height).data;
     let sum = 0;
     for (let i = 0; i < px.length; i += 4 * 97) sum += px[i] + px[i + 1] + px[i + 2];
-    if (sum / (px.length / (4 * 97)) / 3 < 10) return; // black frame
+    if (sum / (px.length / (4 * 97)) / 3 < 10) return false; // black frame
     saveCapture(id, c.toDataURL('image/jpeg', 0.72));
-  } catch { /* cross-origin video in direct mode */ }
+    return true;
+  } catch { return false; /* cross-origin video in direct mode */ }
+}
+
+// ------------------------------------------------------------------ automatic thumbnails
+
+let tourSnap = null; // the channel being captured right now
+
+/**
+ * Visits the given channels one at a time in the background (a hidden, muted player that
+ * only loads a couple of seconds), saves a frame of what each one is showing and swaps it
+ * into the cards under root. Waits while anything else plays; repeats every `every` ms.
+ */
+export function thumbTour(root, channels, { every = 15 * 60000 } = {}) {
+  let stopped = false, timer = null;
+  const tried = new Map();
+  const busy = () => document.hidden || Preview.current || document.querySelector('.player');
+  const due = (c) => {
+    const cap = captureOf(c.id);
+    const t = tried.get(c.id) || 0;
+    return (!cap || Date.now() - cap.at > every) && Date.now() - t > every;
+  };
+  const next = (ms) => {
+    clearTimeout(timer);
+    if (!stopped) timer = setTimeout(step, ms);
+  };
+  async function step() {
+    if (stopped) return;
+    if (!root.isConnected) return stop();
+    if (!prefs.autoThumbs || busy()) return next(4000);
+    const c = channels.find(due);
+    if (!c) return next(60000);
+    tried.set(c.id, Date.now());
+    const res = await snap(c);
+    if (res === 'aborted') tried.delete(c.id);
+    if (res === 'ok' && root.isConnected) refreshCaptures(root);
+    next(1500);
+  }
+  function snap(c) {
+    return new Promise((resolve) => {
+      const v = h('video.tourvid', { muted: true, playsInline: true, preload: 'auto' });
+      v.muted = true;
+      document.body.append(v);
+      let eng = null, done = false;
+      const finish = (res) => {
+        if (done) return;
+        done = true;
+        clearTimeout(limit);
+        clearInterval(watch);
+        try { eng && eng.hls && eng.hls.destroy(); } catch { /* empty */ }
+        try { eng && eng.ts && (eng.ts.unload(), eng.ts.detachMediaElement(), eng.ts.destroy()); } catch { /* empty */ }
+        v.removeAttribute('src');
+        try { v.load(); } catch { /* empty */ }
+        v.remove();
+        if (tourSnap === me) tourSnap = null;
+        resolve(res);
+      };
+      const me = { abort: () => finish('aborted') };
+      tourSnap = me;
+      const limit = setTimeout(() => finish('fail'), 15000);
+      const watch = setInterval(() => { if (stopped || busy()) finish('aborted'); }, 500);
+      v.addEventListener('timeupdate', () => {
+        if (done || v.currentTime < 0.5) return;
+        if (grab(v, c.id)) finish('ok');
+        else if (v.currentTime > 5) finish('fail'); // only black frames
+      });
+      eng = attachStream(v, liveUrl(c), true, null, () => finish('fail'), { lite: true });
+    });
+  }
+  function stop() {
+    stopped = true;
+    clearTimeout(timer);
+    if (tourSnap) tourSnap.abort();
+  }
+  next(2500);
+  return stop;
 }
 
 /**
  * Plays a URL in a <video>: HLS with hls.js, MPEG-TS with mpegts.js, everything
  * else natively.
  */
-export function attachStream(video, rawUrl, live, onEngines, onFatal) {
+export function attachStream(video, rawUrl, live, onEngines, onFatal, { direct = false, lite = false } = {}) {
   const isHls = /\.m3u8(\?|$)/i.test(rawUrl);
   const isTs = /\.ts(\?|$)/i.test(rawUrl) || (live && !isHls && !/\.(mp4|mkv|webm|mov|m4v)(\?|$)/i.test(rawUrl));
-  const url = viaProxy(rawUrl);
+  const url = direct ? rawUrl : viaProxy(rawUrl);
   const engines = { hls: null, ts: null };
   if (isHls && window.Hls && window.Hls.isSupported()) {
     const hls = new window.Hls({
       lowLatencyMode: false,
-      maxBufferLength: live ? 20 : 40,
-      maxMaxBufferLength: 60,
+      maxBufferLength: lite ? 2 : live ? 20 : 40,
+      maxMaxBufferLength: lite ? 4 : 60,
       backBufferLength: 20,
       manifestLoadingMaxRetry: 2,
       levelLoadingMaxRetry: 3,

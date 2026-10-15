@@ -5,7 +5,7 @@ import { focus } from './nav.js';
 import * as D from './data.js';
 import {
   posterCard, channelCard, eventCard, shelf, logoTile, progressBar, button, iconButton, segmented, icon,
-  dots, livePreview, eventSubtitle, TINT, emptyState, loading, bindClick, coverImg, favButton, refreshCaptures, picture,
+  dots, livePreview, thumbTour, eventSubtitle, TINT, emptyState, loading, bindClick, coverImg, favButton, refreshCaptures, picture,
 } from './ui.js';
 import { play } from './player.js';
 
@@ -108,21 +108,29 @@ function artLayer(it) {
 
 // ------------------------------------------------------------------ Inicio
 
-function slidesForHome(events) {
-  const sports = events.filter((e) => e.label !== 'NOTICIAS');
-  const news = events.filter((e) => e.label === 'NOTICIAS');
-  const lead = sports[0] || news[0];
-  const second = sports[1] || (news[0] !== lead ? news[0] : null);
-  const ms = D.recentMovies(6), ss = D.recentSeries(6);
-  const vod = [];
-  for (let i = 0; i < Math.max(ms.length, ss.length); i++) {
-    if (ms[i]) vod.push({ kind: 'movie', item: ms[i] });
-    if (ss[i]) vod.push({ kind: 'series', item: ss[i] });
-  }
-  const sorted = vod.sort((a, b) => !!b.item.backdrop - !!a.item.backdrop).slice(0, 6);
-  if (lead) sorted.unshift({ kind: 'live', event: lead });
-  if (second && second !== lead) sorted.splice(Math.min(3, sorted.length), 0, { kind: 'live', event: second });
-  return sorted;
+/**
+ * Carousel of Inicio: recommended movies and series, alternated, preferring those with
+ * wide artwork. Picked at random among the best ones once per catalogue (so it changes
+ * between visits but not while browsing). The live channels only appear on demand.
+ */
+function slidesForHome() {
+  return D.cached('homeSlides', () => {
+    const pick = (list, n) => {
+      const pool = [...list.filter((x) => x.backdrop).slice(0, 14), ...list.filter((x) => !x.backdrop)].slice(0, 14);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      return pool.sort((x, y) => !!y.backdrop - !!x.backdrop).slice(0, n);
+    };
+    const ms = pick(D.recommendedMovies(30), 4), ss = pick(D.recommendedSeries(30), 4);
+    const out = [];
+    for (let i = 0; i < Math.max(ms.length, ss.length); i++) {
+      if (ms[i]) out.push({ kind: 'movie', item: ms[i] });
+      if (ss[i]) out.push({ kind: 'series', item: ss[i] });
+    }
+    return out;
+  });
 }
 
 function slideKey(s) {
@@ -149,6 +157,7 @@ function featuredBox(ctx, slides, { onOpen }) {
 
   function move(d) {
     if (!slides.length) return;
+    if (pinned && api.onUnpin) api.onUnpin();
     pinned = null;
     index = (index + d + slides.length) % slides.length;
     show();
@@ -181,15 +190,18 @@ function featuredBox(ctx, slides, { onOpen }) {
       favWrap.append(favButton(s.kind, it.id, it.name, it.poster, { cls: 'pill.round.glass.f' }));
     }
     swapLayer(stage, old, layer);
-    const nextCtl = pinned ? h('div') : carouselControls(slides.length, index, move, (i) => { pinned = null; index = i; show(); });
+    const nextCtl = carouselControls(slides.length, index, move, (i) => { pinned = null; index = i; show(); });
     ctl.replaceWith(nextCtl);
     ctl = nextCtl;
     if (!pinned) rot.schedule(index);
   }
   ctx.cleanup(() => preview && preview.stop());
   show();
-  return {
+  const api = {
     el: box,
+    get pinned() { return pinned; },
+    redraw() { if (!pinned) show(); },
+    onUnpin: null,
     setPinned(s) {
       const same = (pinned && s && slideKey(pinned) === slideKey(s)) || (!pinned && !s);
       if (same) return;
@@ -198,13 +210,15 @@ function featuredBox(ctx, slides, { onOpen }) {
       show();
     },
   };
+  return api;
 }
 
 function homeScreen(ctx) {
   const scroller = h('div.scroll');
   if (!S.live.length && !S.vod.length && !S.series.length) return emptyState('Todavía no hay nada aquí', 'Añade una lista en Ajustes.');
   const events = D.liveNow();
-  const slides = slidesForHome(events);
+  const slides = slidesForHome();
+  const inSlides = new Set(slides.map(slideKey));
   const sports = events.filter((e) => e.label !== 'NOTICIAS');
   const news = events.filter((e) => e.label === 'NOTICIAS');
   const recent = D.recentChannels();
@@ -216,7 +230,7 @@ function homeScreen(ctx) {
   });
 
   // Bento: featured + live now.
-  if (slides.length) {
+  if (slides.length || events.length) {
     const featured = featuredBox(ctx, slides, {
       onOpen: (s) => {
         if (!s) return;
@@ -239,24 +253,22 @@ function homeScreen(ctx) {
         h('div.tx', null, h('div.t.clamp1', null, ev.title),
           h('div.s.clamp1', null, h('b', null, ev.label), ev.channel.name.toLowerCase() !== ev.title.toLowerCase() ? '  ·  ' + ev.channel.name : '')),
         ev.start ? progressBar((Date.now() - ev.start) / (ev.stop - ev.start)) : null);
-      const pin = () => {
+      // First click: the channel plays in the big box. Second click (or its button): full screen.
+      r.addEventListener('click', () => {
+        if (r.classList.contains('pin')) {
+          playChannels(events.map((e) => e.channel), i);
+          return;
+        }
         list.querySelectorAll('.lnr.pin').forEach((x) => x.classList.remove('pin'));
         r.classList.add('pin');
         featured.setPinned({ kind: 'live', event: ev });
-      };
-      r.addEventListener('focus', pin);
-      r.addEventListener('pointerenter', pin);
-      r.addEventListener('click', () => playChannels(events.map((e) => e.channel), i));
+      });
       list.append(r);
     });
-    const unpin = () => setTimeout(() => {
-      if (!panel.contains(document.activeElement) && !panel.matches(':hover')) {
-        list.querySelectorAll('.lnr.pin').forEach((x) => x.classList.remove('pin'));
-        featured.setPinned(null);
-      }
-    }, 0);
-    panel.addEventListener('focusout', unpin);
-    panel.addEventListener('pointerleave', unpin);
+    featured.onUnpin = () => list.querySelectorAll('.lnr.pin').forEach((x) => x.classList.remove('pin'));
+    // Wide artwork for the movies of the carousel (one request each, remembered).
+    const noArt = slides.filter((x) => x.kind === 'movie' && !x.item.backdrop).map((x) => x.item);
+    if (noArt.length) D.prefetchBackdrops(noArt).then((ch) => { if (ch && scroller.isConnected) featured.redraw(); });
     scroller.append(h('div.bento', { dataset: { top: '' } }, featured.el, panel));
   }
 
@@ -281,10 +293,10 @@ function homeScreen(ctx) {
     }));
   }
   if (recent.length) scroller.append(shelf('Últimos canales', recent, (c, i) => chCard(recent, c, i, { showAge: true }), { live: true, more: () => ctx.selectTab('live') }));
-  const rm = D.recommendedMovies();
+  const rm = D.recommendedMovies().filter((m) => !inSlides.has('m' + m.id));
   if (rm.length) scroller.append(shelf('Películas recomendadas', rm, (m) => movieCard(ctx, m), { more: () => ctx.selectTab('movies') }));
   if (sports.length) scroller.append(shelf('Deportes y eventos en directo', sports, (ev, i) => eventCard(ev, { onClick: () => playChannels(sports.map((e) => e.channel), i) }), { live: true }));
-  const rs = D.recommendedSeries();
+  const rs = D.recommendedSeries().filter((x) => !inSlides.has('s' + x.id));
   if (rs.length) scroller.append(shelf('Series recomendadas', rs, (s) => seriesCard(ctx, s), { more: () => ctx.selectTab('series') }));
   if (news.length) scroller.append(shelf('Noticias en directo', news, (ev, i) => eventCard(ev, { onClick: () => playChannels(news.map((e) => e.channel), i) }), { live: true }));
   if (myList.length) {
@@ -299,6 +311,10 @@ function homeScreen(ctx) {
     })));
   }
   if (favCh.length) scroller.append(shelf('Canales favoritos', favCh, (c, i) => chCard(favCh, c, i), { live: true }));
+  // A current picture for the channels of this page, taken one by one in the background.
+  const tourList = [...new Map([...recent.slice(0, 10), ...favCh.slice(0, 8), ...sports.map((e) => e.channel), ...news.map((e) => e.channel)]
+    .map((c) => [c.id, c])).values()].slice(0, 20);
+  if (tourList.length) ctx.cleanup(thumbTour(scroller, tourList));
   return scroller;
 }
 
@@ -837,9 +853,11 @@ function settingsScreen(ctx) {
     row('Tamaño de los subtítulos', 'XS es el tamaño de Apple TV.', segmented(['XS', 'S', 'M', 'L', 'XL'], D.prefs.subtitleSize, (i) => { D.prefs.subtitleSize = i; })),
     row('Estilo de los subtítulos', 'Sombra suave, o caja negra translúcida como en Apple TV.', segmented(['Sin fondo', 'Fondo'], D.prefs.subtitleBackground ? 1 : 0, (i) => { D.prefs.subtitleBackground = i === 1; })),
     h('h2', null, 'Interfaz'),
+    row('Miniaturas en directo', 'Inicio va tomando, de uno en uno y en segundo plano, una imagen de lo que emite cada canal (cada 15 minutos). Se para mientras ves algo. Cada imagen gasta 1–2 MB de tu hosting.', yesNo('autoThumbs')),
     row('Vista previa en directo', 'Los destacados de Inicio y En vivo muestran el canal en movimiento y sin sonido. Usa una conexión de tu proveedor mientras se ve.', yesNo('livePreview')),
     row('Reducir animaciones', 'Quita el zoom lento y los fundidos. Útil en ordenadores poco potentes.', yesNo('reduceMotion', () => document.body.classList.toggle('reduce', D.prefs.reduceMotion))),
     row('Conexión directa', 'Sin pasar por tu servidor. Solo funciona si tu proveedor usa https y lo permite; si algo deja de cargar, vuelve a "No".', yesNo('direct')),
+    row('Prueba de velocidad', 'Mide cuánto tarda en empezar una película a través de tu hosting y si tu proveedor permite la conexión directa (más rápida al saltar en la línea de tiempo).', speedTest()),
     h('h2', null, 'Teclado'),
     h('div.keys', null, ...keys.map(([k, d]) => h('div.key', null, h('kbd', null, k), h('span', null, d)))),
     h('h2', null, 'Acceso'),
@@ -847,6 +865,61 @@ function settingsScreen(ctx) {
     h('div.t-caption.faint', { style: { marginTop: '32px' } }, 'nansu tv web · Reproductor personal. La web no incluye contenido. Tipografía Inter (OFL), hls.js (Apache 2.0), mpegts.js (Apache 2.0).'),
   );
   return wrap;
+}
+
+/** Settings: measures the hosting (time to first byte, speed) and the direct connection. */
+function speedTest() {
+  const out = h('div.speed');
+  const btn = button('Probar', async () => {
+    const m = D.recentMovies(1)[0] || S.vod[0];
+    if (!m) {
+      out.textContent = 'No hay películas en la lista para probar.';
+      return;
+    }
+    btn.disabled = true;
+    out.replaceChildren(h('span.dim', null, 'Midiendo…'));
+    const raw = D.movieUrl(m);
+    const lines = [];
+    try {
+      const t0 = performance.now();
+      const r = await fetch(D.viaProxy(raw), { credentials: 'same-origin', headers: { Range: 'bytes=0-4194303' } });
+      const first = (performance.now() - t0) / 1000;
+      if (!r.ok) throw new Error('respuesta ' + r.status);
+      const reader = r.body.getReader();
+      let bytes = 0;
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        bytes += value.length;
+      }
+      const total = (performance.now() - t0) / 1000;
+      const mbps = (bytes * 8) / 1e6 / Math.max(0.05, total - first);
+      lines.push(`Por tu hosting: empieza en ${first.toFixed(1).replace('.', ',')} s · ${mbps.toFixed(0)} Mbit/s`);
+    } catch (e) {
+      lines.push('Por tu hosting: falló (' + e.message + ')');
+    }
+    const direct = D.directVodUrl(raw);
+    if (direct && direct !== D.viaProxy(raw)) {
+      const ok = await new Promise((res) => {
+        const v = document.createElement('video');
+        v.muted = true;
+        v.preload = 'metadata';
+        const t0 = performance.now();
+        const end = (val) => { clearTimeout(t); v.removeAttribute('src'); try { v.load(); } catch { /* empty */ } res(val); };
+        const t = setTimeout(() => end(null), 8000);
+        v.onloadedmetadata = () => end((performance.now() - t0) / 1000);
+        v.onerror = () => end(null);
+        v.src = direct;
+      });
+      D.directMemo.set(direct, ok != null);
+      lines.push(ok != null
+        ? `Conexión directa: sí, arranca en ${ok.toFixed(1).replace('.', ',')} s (películas y series la usan solas)`
+        : 'Conexión directa: tu proveedor no la permite (todo va por tu hosting)');
+    }
+    out.replaceChildren(...lines.map((l) => h('div', null, l)));
+    btn.disabled = false;
+  });
+  return h('div.speedbox', null, out, btn);
 }
 
 export const SCREENS = {

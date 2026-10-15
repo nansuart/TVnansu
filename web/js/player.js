@@ -4,7 +4,7 @@
 import { h, fmt, toast, debounce } from './util.js';
 import { pushLayer, popLayer, onKey, focus } from './nav.js';
 import { attachStream, grab, logoTile, progressBar, Preview, ICONS, picture } from './ui.js';
-import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged } from './data.js';
+import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo } from './data.js';
 
 let active = null;
 
@@ -40,7 +40,7 @@ function createPlayer(items, startIndex, startMs) {
   let engines = { hls: null, ts: null };
   let triedTs = false;
   let hideTimer = null;
-  let panel = null; // 'channels' | 'tracks'
+  let panel = null; // 'channels' | 'subs' | 'audio'
   let digits = '';
   let digitsTimer = null;
   let capTimer = null;
@@ -54,6 +54,15 @@ function createPlayer(items, startIndex, startMs) {
   let lastPos = 0;
   let stallTimer = null;
   let retryTimer = null;
+  // Movies and episodes straight from the provider when its https works (see directVodUrl).
+  let usingDirect = false;
+  let currentDirect = null;
+  let forceProxy = false;
+  let probeTimer = null;
+  /** Tells the hosting a seek just happened, so it answers with a small first piece. */
+  const markSeek = () => {
+    if (!usingDirect) document.cookie = 'nt_seek=1; path=/; max-age=4; SameSite=Lax';
+  };
   let overBar = false;
   let dragging = false;
   const item = () => items[index];
@@ -103,7 +112,8 @@ function createPlayer(items, startIndex, startMs) {
   const time = h('span.ptime');
   const now = h('div.pnow');
   const listBtn = pbtn('list', 'Lista de canales (L)', () => (panel === 'channels' ? closePanel() : openChannels()));
-  const ccBtn = pbtn('cc', 'Subtítulos y audio (C)', () => (panel === 'tracks' ? closePanel() : openTracks()));
+  const ccBtn = pbtn('cc', 'Subtítulos (C)', () => (panel === 'subs' ? closePanel() : openSubs()));
+  const audioBtn = pbtn('audio', 'Idioma del audio (A)', () => (panel === 'audio' ? closePanel() : openAudio()));
   const fsBtn = pbtn('fs', 'Pantalla completa (F)', () => toggleFullscreen());
   const seek = h('div.seek', null, h('div.track', null, h('i.buf'), h('i.played'), h('i.knob')), h('div.tip'));
   const row = h('div.prow');
@@ -158,7 +168,10 @@ function createPlayer(items, startIndex, startMs) {
     if (!dragging) return;
     dragging = false;
     seek.classList.remove('drag');
-    if (scrubTarget != null) video.currentTime = scrubTarget;
+    if (scrubTarget != null) {
+      markSeek();
+      video.currentTime = scrubTarget;
+    }
     scrubTarget = null;
     renderTime();
   };
@@ -190,6 +203,11 @@ function createPlayer(items, startIndex, startMs) {
   video.addEventListener('progress', () => { if (!isLive()) renderTime(); });
   video.addEventListener('play', () => { setIcon(playBtn, 'pause'); playBtn.title = 'Pausa (Espacio)'; showControls(); });
   video.addEventListener('pause', () => { setIcon(playBtn, 'play'); playBtn.title = 'Reproducir (Espacio)'; showControls(); });
+  video.addEventListener('loadedmetadata', () => {
+    clearTimeout(probeTimer);
+    if (usingDirect && currentDirect) directMemo.set(currentDirect, true);
+    updateAudioBtn();
+  });
   video.addEventListener('volumechange', () => setIcon(muteBtn, video.muted || video.volume === 0 ? 'mute' : 'vol'));
   video.addEventListener('ended', () => {
     if (item().kind === 'episode' && index < items.length - 1) goTo(index + 1);
@@ -256,9 +274,22 @@ function createPlayer(items, startIndex, startMs) {
     spin.style.display = 'flex';
     const it = item();
     const url = it.kind === 'live' ? liveUrl(it.channel) : it.url;
-    engines = attachStream(video, url, it.kind === 'live', null, onFatal);
+    const direct = it.kind !== 'live' && !forceProxy ? directVodUrl(url) : null;
+    clearTimeout(probeTimer);
+    usingDirect = !!(direct && directMemo.allowed(direct));
+    currentDirect = usingDirect ? direct : null;
+    if (usingDirect) {
+      engines = attachStream(video, direct, false, null, onFatal, { direct: true });
+      // No answer from the provider in a few seconds: go through the hosting instead.
+      probeTimer = setTimeout(() => { if (usingDirect && video.readyState < 1) toProxy(); }, 7000);
+    } else {
+      if (it.kind !== 'live') markSeek();
+      engines = attachStream(video, url, it.kind === 'live', null, onFatal);
+    }
+    if (engines.hls && window.Hls) engines.hls.on(window.Hls.Events.AUDIO_TRACKS_UPDATED, updateAudioBtn);
     if (seekMs > 0) {
       const once = () => {
+        markSeek();
         try { video.currentTime = seekMs / 1000; } catch { /* empty */ }
         video.removeEventListener('loadedmetadata', once);
       };
@@ -284,10 +315,19 @@ function createPlayer(items, startIndex, startMs) {
     try { video.load(); } catch { /* empty */ }
   }
 
+  /** Direct playback didn't work: remember it and use the hosting from here on. */
+  function toProxy() {
+    if (closed) return;
+    if (currentDirect) directMemo.set(currentDirect, false);
+    forceProxy = true;
+    load(lastPos * 1000, true);
+  }
+
   /** The video stopped or failed after playing: reconnect where it was, a few times. */
   function recover() {
     if (closed) return;
     clearTimeout(stallTimer);
+    if (usingDirect) forceProxy = true;
     if (retries >= 3) {
       showError();
       return;
@@ -304,6 +344,10 @@ function createPlayer(items, startIndex, startMs) {
   function onFatal() {
     if (closed) return;
     const it = item();
+    if (usingDirect && !everPlayed) {
+      toProxy();
+      return;
+    }
     if (everPlayed || retries > 0) {
       recover();
       return;
@@ -369,7 +413,7 @@ function createPlayer(items, startIndex, startMs) {
         h('div.ptx', null,
           h('div.a.clamp1', null, c.num ? h('span.num', null, String(c.num)) : null, c.name),
           h('div.b', null, liveTag)));
-      row.replaceChildren(...[items.length > 1 ? prevCh : null, playBtn, items.length > 1 ? nextCh : null, vol, now, listBtn, ccBtn, fsBtn].filter(Boolean));
+      row.replaceChildren(...[items.length > 1 ? prevCh : null, playBtn, items.length > 1 ? nextCh : null, vol, now, listBtn, audioBtn, ccBtn, fsBtn].filter(Boolean));
       const fill = (nn) => {
         now.replaceChildren();
         if (nn?.now) {
@@ -386,9 +430,10 @@ function createPlayer(items, startIndex, startMs) {
         h('div.a.clamp1', null, it.kind === 'episode' && it.seriesTitle ? it.seriesTitle : it.title),
         it.kind === 'episode' ? h('div.b.clamp1', null, [it.subtitle, it.title].filter(Boolean).join('  ·  ')) : it.subtitle ? h('div.b', null, it.subtitle) : null));
       const hasNext = it.kind === 'episode' && index < items.length - 1;
-      row.replaceChildren(...[back10, playBtn, fwd10, vol, time, h('div.pgrow'), hasNext ? nextEp : null, ccBtn, fsBtn].filter(Boolean));
+      row.replaceChildren(...[back10, playBtn, fwd10, vol, time, h('div.pgrow'), hasNext ? nextEp : null, audioBtn, ccBtn, fsBtn].filter(Boolean));
       renderTime();
     }
+    updateAudioBtn();
   }
 
   function renderTime() {
@@ -432,6 +477,7 @@ function createPlayer(items, startIndex, startMs) {
     showFlash(delta < 0 ? 'back10' : 'fwd10');
     clearTimeout(scrubTimer);
     scrubTimer = setTimeout(() => {
+      markSeek();
       video.currentTime = scrubTarget;
       scrubTarget = null;
     }, 450);
@@ -444,6 +490,7 @@ function createPlayer(items, startIndex, startMs) {
     saveNow();
     if (isLive()) grab(video, item().id);
     index = target;
+    forceProxy = false;
     nextUp.style.display = 'none';
     load(0);
     if (panel === 'channels') openChannels();
@@ -541,56 +588,80 @@ function createPlayer(items, startIndex, startMs) {
     }, 30);
   }
 
-  function openTracks() {
-    panel = 'tracks';
+  function panelOpt(label, on, fn) {
+    const o = h('div.opt.f' + (on ? '.cur' : ''), { tabIndex: -1 }, h('span.ck', null, on ? '✓' : ''), h('span.clamp1', null, label));
+    o.addEventListener('click', fn);
+    return o;
+  }
+  function showPanel(title, content) {
+    rightPanel.replaceChildren(h('div.sideh', null, h('h3', null, title), pbtn('close', 'Cerrar', () => closePanel())), content);
+    rightPanel.classList.remove('closed');
+    leftPanel.classList.add('closed');
     root.classList.remove('hidectl', 'idle');
-    const content = h('div.optlist');
-    const opt = (label, on, fn) => {
-      const o = h('div.opt.f' + (on ? '.cur' : ''), { tabIndex: -1 }, h('span.ck', null, on ? '✓' : ''), h('span.clamp1', null, label));
-      o.addEventListener('click', fn);
-      return o;
-    };
+    if (document.body.classList.contains('kbd')) setTimeout(() => focus(rightPanel.querySelector('.opt.cur') || rightPanel.querySelector('.f'), { instant: true }), 30);
+  }
+
+  /** Audio tracks the browser lets us choose (HLS streams, or files in Safari). */
+  function audioTracks() {
     const hls = engines.hls;
-    const native = video.audioTracks; // only some browsers (Safari) expose a file's audio tracks
-    const isFile = !isLive() && !hls;
-    if (hls && hls.audioTracks && hls.audioTracks.length > 1) {
-      content.append(h('h4', null, 'Audio'));
-      hls.audioTracks.forEach((t, i) => content.append(opt(t.name || t.lang || `Pista ${i + 1}`, hls.audioTrack === i, () => { hls.audioTrack = i; openTracks(); })));
-    } else if (!hls && native && native.length > 1) {
-      content.append(h('h4', null, 'Audio'));
-      [...native].forEach((t, i) => content.append(opt(t.label || t.language || `Pista ${i + 1}`, t.enabled, () => {
-        [...native].forEach((x, j) => (x.enabled = j === i));
-        openTracks();
-      })));
+    if (hls && hls.audioTracks && hls.audioTracks.length) {
+      return hls.audioTracks.map((t, i) => ({ label: t.name || t.lang || `Pista ${i + 1}`, on: hls.audioTrack === i, pick: () => { hls.audioTrack = i; } }));
     }
+    const native = video.audioTracks;
+    if (native && native.length) {
+      return [...native].map((t, i) => ({ label: t.label || t.language || `Pista ${i + 1}`, on: t.enabled, pick: () => { [...native].forEach((x, j) => (x.enabled = j === i)); } }));
+    }
+    return [];
+  }
+  function updateAudioBtn() {
+    audioBtn.classList.toggle('dim', audioTracks().length < 2);
+  }
+
+  function openAudio() {
+    panel = 'audio';
+    const content = h('div.optlist');
+    const list = audioTracks();
+    if (list.length > 1) {
+      content.append(h('h4', null, 'Idioma del audio'));
+      list.forEach((t) => content.append(panelOpt(t.label, t.on, () => { t.pick(); openAudio(); })));
+    } else {
+      const isFile = !isLive() && !engines.hls;
+      content.append(h('div.dim.note', null, isFile
+        ? 'El navegador no deja elegir el idioma de este archivo. Con archivos MP4, Safari sí muestra los idiomas; los MKV solo cambian de idioma en la app de la tele.'
+        : 'Esta emisión trae un solo idioma de audio.'));
+    }
+    showPanel('Audio', content);
+  }
+
+  function openSubs() {
+    panel = 'subs';
+    const content = h('div.optlist');
     const tracks = [...(video.textTracks || [])].filter((t) => t.kind === 'subtitles' || t.kind === 'captions');
     content.append(h('h4', null, 'Subtítulos'));
-    content.append(opt('Desactivados', !tracks.some((t) => t.mode === 'showing'), () => { tracks.forEach((t) => (t.mode = 'disabled')); openTracks(); }));
-    tracks.forEach((t, i) => content.append(opt(t.label || t.language || `Subtítulos ${i + 1}`, t.mode === 'showing', () => {
+    content.append(panelOpt('Desactivados', !tracks.some((t) => t.mode === 'showing'), () => { tracks.forEach((t) => (t.mode = 'disabled')); openSubs(); }));
+    tracks.forEach((t, i) => content.append(panelOpt(t.label || t.language || `Subtítulos ${i + 1}`, t.mode === 'showing', () => {
       tracks.forEach((x) => (x.mode = 'disabled'));
       t.mode = 'showing';
-      openTracks();
+      openSubs();
     })));
     if (!tracks.length) {
+      const isFile = !isLive() && !engines.hls;
       content.append(h('div.dim.note', null, isFile
-        ? 'Los subtítulos e idiomas que van dentro del archivo de vídeo (MKV o MP4) no se pueden elegir desde el navegador: Chrome, Edge y Firefox no los muestran. En la app de la tele sí.'
+        ? 'Los subtítulos que van dentro del archivo no se pueden mostrar en Chrome, Edge ni Firefox. Con archivos MP4, Safari sí los muestra; con MKV, solo la app de la tele.'
         : 'Esta emisión no trae subtítulos que el navegador pueda mostrar.'));
     }
     content.append(h('h4', null, 'Tamaño'));
     const sizes = h('div.chipset');
     ['XS', 'S', 'M', 'L', 'XL'].forEach((l, i) => {
       const b = h('button.chipbtn.f' + (prefs.subtitleSize === i ? '.on' : ''), { type: 'button', tabIndex: -1 }, l);
-      b.addEventListener('click', () => { prefs.subtitleSize = i; applySubSize(); openTracks(); });
+      b.addEventListener('click', () => { prefs.subtitleSize = i; applySubSize(); openSubs(); });
       sizes.append(b);
     });
     content.append(sizes);
     content.append(h('h4', null, 'Estilo'));
-    content.append(opt('Sin fondo', !prefs.subtitleBackground, () => { prefs.subtitleBackground = false; document.body.classList.remove('subbg'); openTracks(); }));
-    content.append(opt('Fondo', !!prefs.subtitleBackground, () => { prefs.subtitleBackground = true; document.body.classList.add('subbg'); openTracks(); }));
-    rightPanel.replaceChildren(h('div.sideh', null, h('h3', null, 'Subtítulos y audio'), pbtn('close', 'Cerrar', () => closePanel())), content);
-    rightPanel.classList.remove('closed');
-    leftPanel.classList.add('closed');
-    if (document.body.classList.contains('kbd')) setTimeout(() => focus(rightPanel.querySelector('.opt.cur') || rightPanel.querySelector('.f'), { instant: true }), 30);
+    content.append(panelOpt('Sin fondo', !prefs.subtitleBackground, () => { prefs.subtitleBackground = false; document.body.classList.remove('subbg'); openSubs(); }));
+    content.append(panelOpt('Fondo', !!prefs.subtitleBackground, () => { prefs.subtitleBackground = true; document.body.classList.add('subbg'); openSubs(); }));
+    showPanel('Subtítulos', content);
   }
 
   function closePanel() {
@@ -643,7 +714,7 @@ function createPlayer(items, startIndex, startMs) {
         else seekBy(-(e.repeat ? 30 : 10));
         return true;
       case 'ArrowRight':
-        if (live) openTracks();
+        if (live) openSubs();
         else seekBy(e.repeat ? 30 : 10);
         return true;
       case 'ArrowUp':
@@ -673,7 +744,13 @@ function createPlayer(items, startIndex, startMs) {
         return true;
       case 'c':
       case 'C':
-        openTracks();
+        if (panel === 'subs') closePanel();
+        else openSubs();
+        return true;
+      case 'a':
+      case 'A':
+        if (panel === 'audio') closePanel();
+        else openAudio();
         return true;
       case 'l':
       case 'L':
@@ -727,6 +804,7 @@ function createPlayer(items, startIndex, startMs) {
     clearTimeout(clickTimer);
     clearTimeout(stallTimer);
     clearTimeout(retryTimer);
+    clearTimeout(probeTimer);
     offKey();
     document.removeEventListener('fullscreenchange', onFs);
     document.removeEventListener('visibilitychange', onHide);

@@ -54,6 +54,7 @@ const PREF_DEFAULTS = {
   direct: false,
   volume: 1,
   muted: false,
+  autoThumbs: true,
 };
 export const prefs = (() => {
   let saved = {};
@@ -125,6 +126,7 @@ export const S = {
   lastSync: 0,
   epg: new Map(), // epg id → [{s, e, t, d}]
   epgAt: 0,
+  serverInfo: null, // {https_port, protocol} of the Xtream server
   favorites: [], // {kind, id, title, image, at}
   recents: [], // {id, at}
   progress: {}, // uid → {kind, id, title, subtitle, image, pos, dur, at, seriesId}
@@ -172,6 +174,7 @@ export async function loadAll() {
   }
   const bd = (await kvGet('backdrops')) || {};
   for (const m of S.vod) if (bd[m.id]) m.backdrop = bd[m.id];
+  S.serverInfo = (await kvGet('serverInfo')) || null;
   changed('catalog');
 }
 
@@ -222,6 +225,13 @@ export async function sync(progress = () => {}) {
   if (!pl) throw new Error('No hay lista');
   if (pl.type === 'xtream') {
     progress('Categorías…');
+    // Ports of the provider (https_port is used to try direct playback of movies).
+    getJson(xapi('')).then((j) => {
+      if (j?.server_info) {
+        S.serverInfo = { https_port: j.server_info.https_port || null, protocol: j.server_info.server_protocol || null };
+        kvSet('serverInfo', S.serverInfo);
+      }
+    }).catch(() => {});
     const [lc, vc, sc] = await Promise.all([
       getJson(xapi('get_live_categories')),
       getJson(xapi('get_vod_categories')),
@@ -422,7 +432,7 @@ export async function prefetchBackdrops(movies) {
     const bd = (await kvGet('backdrops')) || {};
     for (const m of movies) if (m.backdrop) bd[m.id] = m.backdrop;
     kvSet('backdrops', bd);
-    memo.clear();
+    for (const k of [...memo.keys()]) if (k !== 'homeSlides') memo.delete(k);
   }
   return changedAny;
 }
@@ -435,6 +445,41 @@ export function liveUrl(c, forceTs = false) {
   const ext = forceTs ? 'ts' : prefs.liveFormat === 'ts' ? 'ts' : 'm3u8';
   return `${xbase(pl)}/live/${encodeURIComponent(pl.user)}/${encodeURIComponent(pl.pass)}/${c.id}.${ext}`;
 }
+/**
+ * The same movie/episode address over https, for the browser to load straight from the
+ * provider (faster seeking, no hosting traffic). null when it can't work.
+ */
+export function directVodUrl(raw) {
+  if (!raw || prefs.direct || /\.m3u8(\?|$)/i.test(raw)) return null;
+  if (raw.startsWith('https://')) return raw;
+  if (!raw.startsWith('http://')) return null;
+  if (location.protocol !== 'https:') return raw;
+  try {
+    const u = new URL(raw);
+    u.protocol = 'https:';
+    const hp = parseInt(S.serverInfo?.https_port, 10);
+    u.port = hp && hp !== 443 ? String(hp) : '';
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+/** Remembers per server whether direct playback worked (a failure is retried after a day). */
+export const directMemo = {
+  key: (url) => {
+    try { return 'nt:direct:' + new URL(url).host; } catch { return 'nt:direct:?'; }
+  },
+  allowed(url) {
+    try {
+      const v = localStorage.getItem(this.key(url));
+      return !v || v === 'ok' || Date.now() - parseInt(v, 10) > 24 * 3600000;
+    } catch { return true; }
+  },
+  set(url, ok) {
+    try { localStorage.setItem(this.key(url), ok ? 'ok' : String(Date.now())); } catch { /* empty */ }
+  },
+};
+
 export function movieUrl(m) {
   if (m.url) return m.url;
   const pl = S.playlist;

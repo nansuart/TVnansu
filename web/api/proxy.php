@@ -75,9 +75,15 @@ $range = $_SERVER['HTTP_RANGE'] ?? null;
 // in pieces keeps each request short: shared hostings buffer long responses, and a
 // download left running keeps a second connection open with the provider (which then
 // refuses the next one). The browser asks for the next piece by itself.
+// Right after a jump in the timeline (cookie set by the player) the first piece is small,
+// so the picture starts sooner; then pieces are big again.
 $chunk = (int)(getenv('NT_CHUNK') ?: 16 * 1024 * 1024);
+$seekHint = isset($_COOKIE['nt_seek']);
+if ($seekHint) $chunk = min($chunk, (int)(getenv('NT_SEEK_CHUNK') ?: 2 * 1024 * 1024));
+$usedHint = false;
 if ($range && preg_match('/^bytes=(\d+)-$/', trim($range), $m)) {
     $range = 'bytes=' . $m[1] . '-' . ((int)$m[1] + $chunk - 1);
+    $usedHint = $seekHint;
 }
 $current = $url;
 $isPlaylistUrl = fn(string $u) => (bool)preg_match('~\.m3u8($|\?)~i', $u);
@@ -122,7 +128,7 @@ for ($hop = 0; $hop < 6; $hop++) {
             }
             return $len;
         },
-        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer) {
+        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint) {
             if ($status >= 300 && $status < 400) return strlen($data); // redirect body: ignore
             $type = strtolower($headers['content-type'] ?? '');
             if (!$started && (str_contains($type, 'mpegurl'))) $playlist = true;
@@ -149,6 +155,8 @@ for ($hop = 0; $hop < 6; $hop++) {
                 $isImage = str_starts_with(strtolower($headers['content-type'] ?? ''), 'image/');
                 header($isImage ? 'Cache-Control: private, max-age=604800' : 'Cache-Control: no-store');
                 header('X-Accel-Buffering: no');
+                // The small piece was used: the next ones are big again.
+                if ($usedHint) header('Set-Cookie: nt_seek=; Max-Age=0; Path=/; SameSite=Lax', false);
             }
             echo $data;
             @flush();
