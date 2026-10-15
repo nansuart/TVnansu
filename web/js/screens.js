@@ -849,6 +849,7 @@ function settingsScreen(ctx) {
       })),
     h('h2', null, 'Reproducción'),
     row('Formato del directo (Xtream)', 'HLS va mejor en el navegador. Si un canal no arranca, prueba TS.', segmented(['HLS', 'TS'], D.prefs.liveFormat === 'ts' ? 1 : 0, (i) => { D.prefs.liveFormat = i ? 'ts' : 'm3u8'; })),
+    row('Reproductor MKV de la web (beta)', 'Lee las películas y series MKV dentro de la web para poder elegir el idioma del audio y los subtítulos que trae el archivo, también en Safari. Si un archivo no le va, usa el reproductor del navegador.', yesNo('mkvPlayer')),
     row('Mosca de nansu tv', 'Marca de agua al 30 % en la esquina inferior izquierda. Solo en canales en vivo.', yesNo('watermark')),
     row('Tamaño de los subtítulos', 'XS es el tamaño de Apple TV.', segmented(['XS', 'S', 'M', 'L', 'XL'], D.prefs.subtitleSize, (i) => { D.prefs.subtitleSize = i; })),
     row('Estilo de los subtítulos', 'Sombra suave, o caja negra translúcida como en Apple TV.', segmented(['Sin fondo', 'Fondo'], D.prefs.subtitleBackground ? 1 : 0, (i) => { D.prefs.subtitleBackground = i === 1; })),
@@ -862,7 +863,7 @@ function settingsScreen(ctx) {
     h('div.keys', null, ...keys.map(([k, d]) => h('div.key', null, h('kbd', null, k), h('span', null, d)))),
     h('h2', null, 'Acceso'),
     row('Cerrar sesión', 'Para entrar de nuevo hará falta la contraseña de la web.', button('Cerrar sesión', async () => { await D.authPost('logout', ''); location.reload(); })),
-    h('div.t-caption.faint', { style: { marginTop: '32px' } }, 'nansu tv web · Reproductor personal. La web no incluye contenido. Tipografía Inter (OFL), hls.js (Apache 2.0), mpegts.js (Apache 2.0).'),
+    h('div.t-caption.faint', { style: { marginTop: '32px' } }, 'nansu tv web · Reproductor personal. La web no incluye contenido. Tipografía Inter (OFL), hls.js, mpegts.js y movi-player (Apache 2.0; FFmpeg bajo LGPL).'),
   );
   return wrap;
 }

@@ -71,6 +71,13 @@ function nt_rewrite_m3u8(string $body, string $base): string
 while (ob_get_level() > 0) @ob_end_clean();
 
 $range = $_SERVER['HTTP_RANGE'] ?? null;
+// HEAD (some players ask only for the size): headers only, never the file.
+$head = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'HEAD';
+// A whole-file request without Range for a big file is a probe that the player
+// abandons at once; never pull more than this for it (the hosting may not notice
+// that the browser left).
+const NT_UNRANGED_CAP = 64 * 1024 * 1024;
+$sent = 0;
 // Movies and episodes: the browser asks for "the rest of the file" (bytes=N-). Serving it
 // in pieces keeps each request short: shared hostings buffer long responses, and a
 // download left running keeps a second connection open with the provider (which then
@@ -110,6 +117,7 @@ for ($hop = 0; $hop < 6; $hop++) {
     if ($range) $reqHeaders[] = 'Range: ' . $range;
     curl_setopt_array($ch, [
         CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_NOBODY => $head,
         CURLOPT_USERAGENT => USER_AGENT,
         CURLOPT_HTTPHEADER => $reqHeaders,
         CURLOPT_CONNECTTIMEOUT => 15,
@@ -135,7 +143,7 @@ for ($hop = 0; $hop < 6; $hop++) {
             }
             return $len;
         },
-        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint) {
+        CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$status, &$headers, &$started, &$playlist, &$buffer, $usedHint, $range, &$sent) {
             if ($status >= 300 && $status < 400) return strlen($data); // redirect body: ignore
             $type = strtolower($headers['content-type'] ?? '');
             if (!$started && (str_contains($type, 'mpegurl'))) $playlist = true;
@@ -167,6 +175,8 @@ for ($hop = 0; $hop < 6; $hop++) {
             }
             echo $data;
             @flush();
+            $sent += strlen($data);
+            if (!$range && !$playlist && (int)($headers['content-length'] ?? 0) > NT_UNRANGED_CAP && $sent >= NT_UNRANGED_CAP) return 0;
             return connection_aborted() ? 0 : strlen($data);
         },
     ]);
@@ -179,6 +189,15 @@ for ($hop = 0; $hop < 6; $hop++) {
     if ($status >= 300 && $status < 400 && $location) {
         $current = nt_resolve($current, $location);
         continue;
+    }
+    if ($head) {
+        if ($status === 0) nt_json(['error' => 'connect', 'code' => $err, 'msg' => $errMsg], 502);
+        http_response_code($status);
+        foreach (['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified'] as $h) {
+            if (isset($headers[$h])) header(ucwords($h, '-') . ': ' . $headers[$h]);
+        }
+        header('Cache-Control: no-store');
+        exit;
     }
     if ($playlist && !$started) {
         if ($status === 0) nt_json(['error' => 'connect', 'code' => $err, 'msg' => $errMsg], 502);

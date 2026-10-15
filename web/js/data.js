@@ -55,6 +55,9 @@ const PREF_DEFAULTS = {
   volume: 1,
   muted: false,
   autoThumbs: true,
+  mkvPlayer: true,
+  audioLang: '',
+  subLang: '',
 };
 export const prefs = (() => {
   let saved = {};

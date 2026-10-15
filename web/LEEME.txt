@@ -58,9 +58,10 @@ Ten en cuenta
   tu casa. Si tu cuenta solo permite una conexión, no veas la web y la tele a la
   vez. Algunos proveedores bloquean las IP de servidores: si nada carga, es
   probable que sea eso.
-- Formatos: el directo va en HLS (y si falla, en TS). Películas en MP4 van bien;
-  algunas MKV con audio AC3/DTS se verán sin sonido en el navegador (en la app
-  de la tele sí suenan).
+- Formatos: el directo va en HLS (y si falla, en TS). Las películas y series
+  MKV se abren con el reproductor MKV de la web (beta), que deja elegir el
+  idioma del audio y los subtítulos del archivo, también en Safari 18 o más
+  reciente. Se puede desactivar en Ajustes.
 - Los datos (lista, favoritos, progreso) se guardan en cada navegador. En otro
   ordenador tendrás que añadir la lista de nuevo.
 
@@ -74,4 +75,5 @@ archivo password.php no viene en el .zip.
 Licencias
 ---------
 Tipografía Inter (SIL Open Font License, fonts/OFL.txt), hls.js y mpegts.js
-(Apache 2.0, lib/*.LICENSE.txt).
+(Apache 2.0, lib/*.LICENSE.txt), movi-player (Apache 2.0, con partes de FFmpeg
+bajo LGPL; lib/movi/LICENSE.txt).

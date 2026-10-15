@@ -4,7 +4,7 @@
 import { h, fmt, toast, debounce } from './util.js';
 import { pushLayer, popLayer, onKey, focus } from './nav.js';
 import { attachStream, grab, logoTile, progressBar, Preview, ICONS, picture } from './ui.js';
-import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo } from './data.js';
+import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo, viaProxy } from './data.js';
 
 let active = null;
 
@@ -21,6 +21,34 @@ export function play(items, index = 0, startMs = 0) {
   if (active) active.close(true);
   Preview.stop();
   active = createPlayer(items, Math.max(0, Math.min(index, items.length - 1)), startMs);
+}
+
+const LANGS = {
+  spa: 'Español', es: 'Español', esp: 'Español', eng: 'Inglés', en: 'Inglés', fre: 'Francés', fra: 'Francés', fr: 'Francés',
+  ger: 'Alemán', deu: 'Alemán', de: 'Alemán', ita: 'Italiano', it: 'Italiano', por: 'Portugués', pt: 'Portugués',
+  jpn: 'Japonés', ja: 'Japonés', kor: 'Coreano', ko: 'Coreano', chi: 'Chino', zho: 'Chino', zh: 'Chino', rus: 'Ruso', ru: 'Ruso',
+  cat: 'Catalán', ca: 'Catalán', lat: 'Español latino', ara: 'Árabe', ar: 'Árabe', und: '',
+};
+/** "Español · E-AC3 5.1" from what the file says about a track. */
+function trackLabel(t, i, word) {
+  const lang = LANGS[(t.language || '').toLowerCase()] ?? (t.language || '');
+  const title = (t.label || t.title || '').trim();
+  const codec = (t.codec || '').replace(/^eac3$/i, 'E-AC3').replace(/^ac3$/i, 'AC3').replace(/^subrip$/i, 'SRT').toUpperCase().replace('E-AC3', 'E-AC3');
+  const ch = t.channels > 2 ? (t.channels === 6 ? ' 5.1' : t.channels === 8 ? ' 7.1' : ` ${t.channels}ch`) : '';
+  const main = title && (!lang || title.toLowerCase().includes(lang.toLowerCase().slice(0, 4))) ? title : [lang, title].filter(Boolean).join(' · ');
+  return (main || `${word} ${i + 1}`) + (codec && !main.toUpperCase().includes(codec) ? ` · ${codec}${ch}` : ch);
+}
+
+let moviLib = null;
+/** Loads the MKV player only the first time an MKV is opened (about 10 MB, from this hosting). */
+function loadMoviLib() {
+  if (!moviLib) {
+    moviLib = import(new URL('lib/movi/element.slim.js', location.href).href).catch((e) => {
+      moviLib = null;
+      throw e;
+    });
+  }
+  return moviLib;
 }
 
 function pbtn(name, title, onClick, cls = '') {
@@ -69,7 +97,8 @@ function createPlayer(items, startIndex, startMs) {
   const item = () => items[index];
   const isLive = () => item().kind === 'live';
 
-  const video = h('video', { playsInline: true, autoplay: true, preload: 'auto' });
+  const makeVideo = () => h('video', { playsInline: true, autoplay: true, preload: 'auto' });
+  let video = makeVideo();
   video.volume = Math.max(0, Math.min(1, prefs.volume ?? 1));
   video.muted = !!prefs.muted;
   const spin = h('div.spinwrap', null, h('div.spinner'));
@@ -181,59 +210,80 @@ function createPlayer(items, startIndex, startMs) {
 
   // ------------------------------------------------------------ video events
 
-  video.addEventListener('waiting', () => {
-    spin.style.display = 'flex';
-    clearTimeout(stallTimer);
-    stallTimer = setTimeout(() => { if (!video.paused) recover(); }, 15000);
-  });
-  video.addEventListener('playing', () => {
-    spin.style.display = 'none';
-    errBox.style.display = 'none';
-    clearTimeout(stallTimer);
-    everPlayed = true;
-  });
-  video.addEventListener('canplay', () => { spin.style.display = 'none'; clearTimeout(stallTimer); });
-  video.addEventListener('timeupdate', () => {
-    if (video.currentTime > 0.5) {
-      lastPos = video.currentTime;
-      if (retries && everPlayed && video.currentTime > 0) retries = Math.max(0, retries - 0.01);
-    }
-    if (!isLive()) renderTime();
-    checkNextUp();
-  });
-  video.addEventListener('progress', () => { if (!isLive()) renderTime(); });
-  video.addEventListener('play', () => { setIcon(playBtn, 'pause'); playBtn.title = 'Pausa (Espacio)'; showControls(); });
-  video.addEventListener('pause', () => { setIcon(playBtn, 'play'); playBtn.title = 'Reproducir (Espacio)'; showControls(); });
-  video.addEventListener('loadedmetadata', () => {
-    clearTimeout(probeTimer);
-    if (usingDirect && currentDirect) directMemo.set(currentDirect, true);
-    if (!usingDirect && pendingDirectFail) {
-      directMemo.set(pendingDirectFail, false);
-      pendingDirectFail = null;
-    }
-    updateAudioBtn();
-  });
-  video.addEventListener('volumechange', () => setIcon(muteBtn, video.muted || video.volume === 0 ? 'mute' : 'vol'));
-  video.addEventListener('ended', () => {
-    if (item().kind === 'episode' && index < items.length - 1) goTo(index + 1);
-    else if (!isLive()) close();
-  });
-  video.addEventListener('error', () => onFatal());
-
-  // Click: pause/play (or close a panel); double click: full screen.
   let clickTimer = null;
-  video.addEventListener('click', () => {
-    if (panel) {
-      closePanel();
-      return;
-    }
-    clearTimeout(clickTimer);
-    clickTimer = setTimeout(() => togglePlay(true), 220);
-  });
-  video.addEventListener('dblclick', () => {
-    clearTimeout(clickTimer);
-    toggleFullscreen();
-  });
+  /** Hooks a picture element (a <video>, or the MKV player) to the controls. */
+  function wire(el) {
+    el.addEventListener('waiting', () => {
+      spin.style.display = 'flex';
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => { if (!video.paused) recover(); }, 15000);
+    });
+    el.addEventListener('playing', () => {
+      spin.style.display = 'none';
+      errBox.style.display = 'none';
+      clearTimeout(stallTimer);
+      everPlayed = true;
+    });
+    el.addEventListener('canplay', () => { spin.style.display = 'none'; clearTimeout(stallTimer); });
+    el.addEventListener('timeupdate', () => {
+      if (video.currentTime > 0.5) {
+        lastPos = video.currentTime;
+        if (retries && everPlayed && video.currentTime > 0) retries = Math.max(0, retries - 0.01);
+      }
+      if (!isLive()) renderTime();
+      checkNextUp();
+    });
+    el.addEventListener('progress', () => { if (!isLive()) renderTime(); });
+    el.addEventListener('play', () => { setIcon(playBtn, 'pause'); playBtn.title = 'Pausa (Espacio)'; showControls(); });
+    el.addEventListener('pause', () => { setIcon(playBtn, 'play'); playBtn.title = 'Reproducir (Espacio)'; showControls(); });
+    el.addEventListener('loadedmetadata', () => {
+      clearTimeout(probeTimer);
+      if (usingDirect && currentDirect) directMemo.set(currentDirect, true);
+      if (!usingDirect && pendingDirectFail) {
+        directMemo.set(pendingDirectFail, false);
+        pendingDirectFail = null;
+      }
+      updateAudioBtn();
+    });
+    el.addEventListener('volumechange', () => setIcon(muteBtn, video.muted || video.volume === 0 ? 'mute' : 'vol'));
+    el.addEventListener('ended', () => {
+      if (item().kind === 'episode' && index < items.length - 1) goTo(index + 1);
+      else if (!isLive()) close();
+    });
+    el.addEventListener('error', () => onFatal());
+
+    // Click: pause/play (or close a panel); double click: full screen.
+    el.addEventListener('click', () => {
+      if (panel) {
+        closePanel();
+        return;
+      }
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => togglePlay(true), 220);
+    });
+    el.addEventListener('dblclick', () => {
+      clearTimeout(clickTimer);
+      toggleFullscreen();
+    });
+    el.addEventListener('errordisplay', () => onFatal());
+    el.addEventListener('audiotrackchange', () => updateAudioBtn());
+    el.addEventListener('trackschange', () => { updateAudioBtn(); applyTrackPrefs(); });
+  }
+  wire(video);
+
+  /** Puts another picture element in place of the current one. */
+  function swapTo(el) {
+    const vol = video.volume, muted = video.muted;
+    video.replaceWith(el);
+    video = el;
+    try {
+      el.volume = vol;
+      el.muted = muted;
+    } catch { /* empty */ }
+    wire(el);
+  }
+  const isMoviEl = (el) => el && el.tagName === 'MOVI-PLAYER';
+
   root.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'mouse' && Math.abs(e.movementX) + Math.abs(e.movementY) < 2) return;
     showControls();
@@ -265,6 +315,68 @@ function createPlayer(items, startIndex, startMs) {
     st.textContent = `video::cue{font-size:clamp(15px, ${sizes[prefs.subtitleSize] || 3.4}vh, 72px)}`;
   }
 
+  // ------------------------------------------------------------ MKV player (movi-player)
+
+  let loadToken = 0;
+  const moviOff = new Set(); // items where it failed: they use the browser's player
+  let moviAudio = null, moviSub = null; // chosen tracks (ids of the MKV player)
+  const wantsMovi = (it) => it.kind !== 'live' && prefs.mkvPlayer !== false && !moviOff.has(it.id) && /\.(mkv|avi)(\?|$)/i.test(it.url || '');
+
+  function subAttrs(el) {
+    el.setAttribute('subtitlesize', String([0.85, 1, 1.15, 1.3, 1.5][prefs.subtitleSize] || 1));
+    el.setAttribute('subtitlebg', prefs.subtitleBackground ? '0.6' : '0');
+    el.setAttribute('subtitleedge', prefs.subtitleBackground ? 'none' : 'shadow');
+  }
+
+  async function loadMovi(it, url, seekMs, token) {
+    try {
+      await loadMoviLib();
+    } catch {
+      moviOff.add(it.id);
+      if (token === loadToken && !closed) load(seekMs, true);
+      return;
+    }
+    if (token !== loadToken || closed) return;
+    const el = document.createElement('movi-player');
+    el.setAttribute('wasmurl', new URL('lib/movi/movi.wasm', location.href).href);
+    el.setAttribute('buffersize', '64'); // read about a minute ahead, not the whole film
+    el.setAttribute('nohotkeys', '');
+    el.setAttribute('noerrorscreen', '');
+    el.setAttribute('spinnerdelay', '600');
+    el.setAttribute('playsinline', '');
+    el.setAttribute('objectfit', 'contain');
+    el.setAttribute('autoplay', '');
+    if (seekMs > 0) el.setAttribute('startat', String(Math.floor(seekMs / 1000)));
+    subAttrs(el);
+    moviAudio = null;
+    moviSub = null;
+    swapTo(el);
+    el.setAttribute('src', viaProxy(url));
+  }
+
+  /** Puts back the languages chosen last time (audio and subtitles), if the file has them. */
+  function applyTrackPrefs() {
+    if (!isMoviEl(video) || !video.player) return;
+    const p = video.player;
+    const auds = p.getAudioTracks?.() || [];
+    if (moviAudio == null && prefs.audioLang) {
+      const a = auds.find((t) => (t.language || '').toLowerCase() === prefs.audioLang);
+      if (a && auds.length > 1) {
+        p.selectAudioTrack(a.id);
+        moviAudio = a.id;
+      }
+    }
+    const subs = p.getSubtitleTracks?.() || [];
+    if (moviSub == null && prefs.subLang) {
+      const t = subs.find((x) => (x.language || '').toLowerCase() === prefs.subLang);
+      if (t) {
+        p.selectSubtitleTrack(t.id);
+        moviSub = t.id;
+      }
+    }
+    updateAudioBtn();
+  }
+
   function load(seekMs = 0, isRetry = false) {
     stopEngines();
     clearTimeout(stallTimer);
@@ -279,6 +391,18 @@ function createPlayer(items, startIndex, startMs) {
     spin.style.display = 'flex';
     const it = item();
     const url = it.kind === 'live' ? liveUrl(it.channel) : it.url;
+    const token = ++loadToken;
+    // MKV/AVI: the web's own MKV player (audio languages and subtitles of the file).
+    if (wantsMovi(it)) {
+      usingDirect = false;
+      currentDirect = null;
+      engines = { hls: null, ts: null };
+      loadMovi(it, url, seekMs, token);
+      renderControls();
+      showControls();
+      return;
+    }
+    if (isMoviEl(video)) swapTo(makeVideo());
     const direct = it.kind !== 'live' && !forceProxy ? directVodUrl(url) : null;
     clearTimeout(probeTimer);
     usingDirect = !!(direct && directMemo.allowed(direct));
@@ -313,6 +437,11 @@ function createPlayer(items, startIndex, startMs) {
   }
 
   function stopEngines() {
+    if (isMoviEl(video)) {
+      // The MKV player is thrown away whole (it frees its decoders when removed).
+      try { video.pause(); } catch { /* empty */ }
+      swapTo(makeVideo());
+    }
     try { engines.hls && engines.hls.destroy(); } catch { /* empty */ }
     try { engines.ts && (engines.ts.unload(), engines.ts.detachMediaElement(), engines.ts.destroy()); } catch { /* empty */ }
     engines = { hls: null, ts: null };
@@ -350,6 +479,11 @@ function createPlayer(items, startIndex, startMs) {
   function onFatal() {
     if (closed) return;
     const it = item();
+    if (isMoviEl(video) && !everPlayed) {
+      moviOff.add(it.id);
+      load(lastPos * 1000, true);
+      return;
+    }
     if (usingDirect && !everPlayed) {
       toProxy();
       return;
@@ -612,6 +746,24 @@ function createPlayer(items, startIndex, startMs) {
 
   /** Audio tracks the browser lets us choose (HLS streams, or files in Safari). */
   function audioTracks() {
+    if (isMoviEl(video)) {
+      const p = video.player;
+      const list = (p && p.getAudioTracks && p.getAudioTracks()) || [];
+      let cur = moviAudio;
+      if (cur == null) {
+        const nat = video.audioTracks ? [...video.audioTracks] : [];
+        const i = nat.findIndex((t) => t.enabled);
+        cur = list[Math.max(0, i)]?.id;
+      }
+      return list.map((t, i) => ({
+        label: trackLabel(t, i, 'Pista'), on: t.id === cur,
+        pick: () => {
+          p.selectAudioTrack(t.id);
+          moviAudio = t.id;
+          if (t.language) prefs.audioLang = t.language.toLowerCase();
+        },
+      }));
+    }
     const hls = engines.hls;
     if (hls && hls.audioTracks && hls.audioTracks.length) {
       return hls.audioTracks.map((t, i) => ({ label: t.name || t.lang || `Pista ${i + 1}`, on: hls.audioTrack === i, pick: () => { hls.audioTrack = i; } }));
@@ -626,6 +778,48 @@ function createPlayer(items, startIndex, startMs) {
     audioBtn.classList.toggle('dim', audioTracks().length < 2);
   }
 
+  /** Subtitles of an MKV (read by the web's MKV player). */
+  function openMoviSubs(content) {
+    const p = video.player;
+    const subs = p.getSubtitleTracks?.() || [];
+    content.append(h('h4', null, 'Subtítulos'));
+    content.append(panelOpt('Desactivados', moviSub == null, async () => {
+      await p.selectSubtitleTrack(null);
+      moviSub = null;
+      prefs.subLang = '';
+      openSubs();
+    }));
+    subs.forEach((t, i) => content.append(panelOpt(trackLabel(t, i, 'Subtítulos'), t.id === moviSub, async () => {
+      await p.selectSubtitleTrack(t.id);
+      moviSub = t.id;
+      if (t.language) prefs.subLang = t.language.toLowerCase();
+      openSubs();
+    })));
+    if (!subs.length) content.append(h('div.dim.note', null, 'Este archivo no trae subtítulos.'));
+    subStyleOptions(content);
+    showPanel('Subtítulos', content);
+  }
+
+  function subStyleOptions(content) {
+    content.append(h('h4', null, 'Tamaño'));
+    const sizes = h('div.chipset');
+    ['XS', 'S', 'M', 'L', 'XL'].forEach((l, i) => {
+      const b = h('button.chipbtn.f' + (prefs.subtitleSize === i ? '.on' : ''), { type: 'button', tabIndex: -1 }, l);
+      b.addEventListener('click', () => { prefs.subtitleSize = i; applySubSize(); if (isMoviEl(video)) subAttrs(video); openSubs(); });
+      sizes.append(b);
+    });
+    content.append(sizes);
+    content.append(h('h4', null, 'Estilo'));
+    const style = (bg) => () => {
+      prefs.subtitleBackground = bg;
+      document.body.classList.toggle('subbg', bg);
+      if (isMoviEl(video)) subAttrs(video);
+      openSubs();
+    };
+    content.append(panelOpt('Sin fondo', !prefs.subtitleBackground, style(false)));
+    content.append(panelOpt('Fondo', !!prefs.subtitleBackground, style(true)));
+  }
+
   function openAudio() {
     panel = 'audio';
     const content = h('div.optlist');
@@ -634,8 +828,8 @@ function createPlayer(items, startIndex, startMs) {
       content.append(h('h4', null, 'Idioma del audio'));
       list.forEach((t) => content.append(panelOpt(t.label, t.on, () => { t.pick(); openAudio(); })));
     } else {
-      const isFile = !isLive() && !engines.hls;
-      content.append(h('div.dim.note', null, isFile
+      const isFile = !isLive() && !engines.hls && !isMoviEl(video);
+      content.append(h('div.dim.note', null, isMoviEl(video) ? 'Este archivo trae un solo idioma de audio.' : isFile
         ? 'El navegador no deja elegir el idioma de este archivo. Con archivos MP4, Safari sí muestra los idiomas; los MKV solo cambian de idioma en la app de la tele.'
         : 'Esta emisión trae un solo idioma de audio.'));
     }
@@ -645,6 +839,7 @@ function createPlayer(items, startIndex, startMs) {
   function openSubs() {
     panel = 'subs';
     const content = h('div.optlist');
+    if (isMoviEl(video) && video.player) return openMoviSubs(content);
     const tracks = [...(video.textTracks || [])].filter((t) => t.kind === 'subtitles' || t.kind === 'captions');
     content.append(h('h4', null, 'Subtítulos'));
     content.append(panelOpt('Desactivados', !tracks.some((t) => t.mode === 'showing'), () => { tracks.forEach((t) => (t.mode = 'disabled')); openSubs(); }));
@@ -659,17 +854,7 @@ function createPlayer(items, startIndex, startMs) {
         ? 'Los subtítulos que van dentro del archivo no se pueden mostrar en Chrome, Edge ni Firefox. Con archivos MP4, Safari sí los muestra; con MKV, solo la app de la tele.'
         : 'Esta emisión no trae subtítulos que el navegador pueda mostrar.'));
     }
-    content.append(h('h4', null, 'Tamaño'));
-    const sizes = h('div.chipset');
-    ['XS', 'S', 'M', 'L', 'XL'].forEach((l, i) => {
-      const b = h('button.chipbtn.f' + (prefs.subtitleSize === i ? '.on' : ''), { type: 'button', tabIndex: -1 }, l);
-      b.addEventListener('click', () => { prefs.subtitleSize = i; applySubSize(); openSubs(); });
-      sizes.append(b);
-    });
-    content.append(sizes);
-    content.append(h('h4', null, 'Estilo'));
-    content.append(panelOpt('Sin fondo', !prefs.subtitleBackground, () => { prefs.subtitleBackground = false; document.body.classList.remove('subbg'); openSubs(); }));
-    content.append(panelOpt('Fondo', !!prefs.subtitleBackground, () => { prefs.subtitleBackground = true; document.body.classList.add('subbg'); openSubs(); }));
+    subStyleOptions(content);
     showPanel('Subtítulos', content);
   }
 

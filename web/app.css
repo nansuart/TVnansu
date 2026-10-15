@@ -383,7 +383,7 @@ kbd { min-width: 64px; text-align: center; font: inherit; font-size: 12.5px; fon
 /* ------------------------------------------------------------ player */
 .player { position: fixed; inset: 0; z-index: 50; background: #000; overflow: hidden; outline: none; user-select: none; }
 .player.idle, .player.idle video { cursor: none; }
-.player video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.player video, .player movi-player { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
 .player .spinwrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .player .spinwrap .spinner { width: 52px; height: 52px; }
 .ptop, .pbottom { position: absolute; left: 0; right: 0; transition: opacity .3s, transform .3s var(--ease); z-index: 2; }
