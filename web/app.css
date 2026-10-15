@@ -436,6 +436,7 @@ kbd { min-width: 64px; text-align: center; font: inherit; font-size: 12.5px; fon
 @keyframes flash { 0% { opacity: 0; transform: scale(.8); } 20% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.15); } }
 .player .err { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(16, 16, 20, .92); padding: 24px 28px; border-radius: 16px; text-align: center; color: var(--text); font-size: 14px; max-width: min(520px, 90vw); z-index: 3; }
 .player .err .et { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.player .err .diag { margin-top: 10px; font-size: 12.5px; color: var(--faint); }
 .errbtns { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
 .player .mosca { position: absolute; left: 32px; bottom: 26px; height: 26px; width: 56px; background: url(img/logo-compact-white.svg) left bottom/contain no-repeat; opacity: 0; transition: opacity .8s; pointer-events: none; }
 .player .mosca.on { opacity: .3; }

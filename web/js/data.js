@@ -118,10 +118,11 @@ export function explainFailure(status, j) {
   }
   if (j && j.error === 'blocked') return 'Esa dirección no está permitida.';
   if ([403, 429, 458, 509].includes(status)) return `El proveedor rechazó la petición (código ${status}). Puede que haya otra conexión abierta con tu cuenta.`;
+  if (status === 404 || status === 410) return `El proveedor no tiene este archivo (error ${status}); puede que lo hayan retirado.`;
   if (status === 502 || status === 503 || status === 504) return `Tu hosting cortó la petición (error ${status}).`;
   return 'El servidor respondió ' + status;
 }
-async function failureOf(r) {
+export async function failureOf(r) {
   let j = null;
   try { j = JSON.parse(await r.text()); } catch { /* not JSON */ }
   return explainFailure(r.status, j);
@@ -343,7 +344,7 @@ const absolute = (u) => new URL(u, location.href).href;
 
 function runWorker(msg, progress) {
   return new Promise((resolve, reject) => {
-    const w = new Worker('js/worker.js?v=2');
+    const w = new Worker('js/worker.js?v=3');
     w.onmessage = (e) => {
       const d = e.data;
       if (d.progress) progress(d.progress);

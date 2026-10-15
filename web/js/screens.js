@@ -943,15 +943,15 @@ function speedTest() {
     // If 6 MB take much longer to *start* than 256 KB, the hosting holds pieces until complete:
     // then smaller pieces start sooner.
     const holds = f2 - f1 > 1;
-    let chunk = 16;
-    if (holds) chunk = Math.max(2, Math.min(16, Math.round((bps * 1.5) / 1048576)));
+    let chunk = 8;
+    if (holds) chunk = Math.max(2, Math.min(8, Math.round((bps * 1.5) / 1048576)));
     try {
-      if (chunk === 16) document.cookie = 'nt_chunk=; path=/; max-age=0; SameSite=Lax';
+      if (chunk === 8) document.cookie = 'nt_chunk=; path=/; max-age=0; SameSite=Lax';
       else document.cookie = `nt_chunk=${chunk * 1048576}; path=/; max-age=31536000; SameSite=Lax`;
     } catch { /* empty */ }
     lines.push(holds
       ? `Tu hosting espera a tener cada trozo entero antes de enviarlo: ajustado a trozos de ${chunk} MB para que arranque antes.`
-      : 'Tu hosting envía el vídeo según llega: trozos de 16 MB.');
+      : 'Tu hosting envía el vídeo según llega: trozos de 8 MB.');
     const direct = D.directVodUrl(ok.c.url);
     if (direct) {
       say('Probando la conexión directa…');

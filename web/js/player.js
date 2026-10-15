@@ -4,7 +4,7 @@
 import { h, fmt, toast, debounce } from './util.js';
 import { pushLayer, popLayer, onKey, focus } from './nav.js';
 import { attachStream, grab, logoTile, progressBar, Preview, ICONS, picture } from './ui.js';
-import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo, viaProxy } from './data.js';
+import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo, viaProxy, failureOf } from './data.js';
 
 let active = null;
 
@@ -320,7 +320,10 @@ function createPlayer(items, startIndex, startMs) {
   let loadToken = 0;
   const moviOff = new Set(); // items where it failed: they use the browser's player
   let moviAudio = null, moviSub = null; // chosen tracks (ids of the MKV player)
-  const wantsMovi = (it) => it.kind !== 'live' && prefs.mkvPlayer !== false && !moviOff.has(it.id) && /\.(mkv|avi)(\?|$)/i.test(it.url || '');
+  const forceMovi = new Set(); // files the browser couldn't open: try the MKV player (it also reads MP4/HEVC/AC3)
+  const nativeTried = new Set();
+  const wantsMovi = (it) => it.kind !== 'live' && prefs.mkvPlayer !== false && !moviOff.has(it.id)
+    && (forceMovi.has(it.id) || /\.(mkv|avi)(\?|$)/i.test(it.url || ''));
 
   function subAttrs(el) {
     el.setAttribute('subtitlesize', String([0.85, 1, 1.15, 1.3, 1.5][prefs.subtitleSize] || 1));
@@ -497,13 +500,28 @@ function createPlayer(items, startIndex, startMs) {
   function onFatal() {
     if (closed) return;
     const it = item();
-    if (isMoviEl(video) && !everPlayed) {
-      moviOff.add(it.id);
-      load(lastPos * 1000, true);
-      return;
-    }
     if (usingDirect && !everPlayed) {
       toProxy();
+      return;
+    }
+    // A movie or episode that never started: try the other player before giving up
+    // (the browser's for files the MKV player can't read, and the other way round).
+    if (it.kind !== 'live' && !everPlayed) {
+      if (isMoviEl(video)) {
+        moviOff.add(it.id);
+        if (!nativeTried.has(it.id)) {
+          load(lastPos * 1000, true);
+          return;
+        }
+      } else {
+        nativeTried.add(it.id);
+        if (!moviOff.has(it.id) && prefs.mkvPlayer !== false && !forceMovi.has(it.id)) {
+          forceMovi.add(it.id);
+          load(lastPos * 1000, true);
+          return;
+        }
+      }
+      showError();
       return;
     }
     if (everPlayed || retries > 0) {
@@ -534,6 +552,8 @@ function createPlayer(items, startIndex, startMs) {
       hint = safari
         ? 'Safari no reproduce archivos MKV. Ábrelo en Chrome o Edge, o en la app de la tele.'
         : 'Este archivo (MKV/AVI) puede no reproducirse en el navegador. En la app de la tele sí funciona.';
+    } else if (it.kind !== 'live') {
+      hint = 'Se probó con el reproductor del navegador y con el de MKV de la web.';
     } else {
       hint = 'Puede que la emisión esté caída o que haya demasiadas conexiones a la vez con tu cuenta.';
     }
@@ -545,7 +565,23 @@ function createPlayer(items, startIndex, startMs) {
       nx.addEventListener('click', () => goTo(index + 1));
       btns.append(nx);
     }
-    errBox.replaceChildren(h('div.et', null, title), h('div.dim', null, hint), btns);
+    const mediaErr = !isMoviEl(video) && video.error ? video.error.code : 0;
+    const diag = h('div.diag', null, 'Comprobando qué pasa…');
+    errBox.replaceChildren(h('div.et', null, title), h('div.dim', null, hint), diag, btns);
+    // Asks the provider for the first bytes of the file, to say what really went wrong.
+    (async () => {
+      const url = isLive() ? liveUrl(it.channel) : it.url;
+      try {
+        const r = await fetch(viaProxy(url), { credentials: 'same-origin', headers: { Range: 'bytes=0-1' } });
+        if (!r.ok) diag.textContent = 'Detalle: ' + await failureOf(r);
+        else if (mediaErr === 4 || mediaErr === 3 || !everPlayed) {
+          const ct = (r.headers.get('content-type') || '').split(';')[0];
+          diag.textContent = `Detalle: el archivo llega bien${ct ? ` (${ct})` : ''}, pero ningún reproductor de la web pudo leer su formato${mediaErr ? ` (código ${mediaErr})` : ''}.`;
+        } else diag.textContent = 'Detalle: el proveedor responde; la conexión se cortó mientras se veía.';
+      } catch (e) {
+        diag.textContent = 'Detalle: no se pudo contactar con tu hosting (' + e.message + ').';
+      }
+    })();
     errBox.style.display = 'block';
     showControls();
   }

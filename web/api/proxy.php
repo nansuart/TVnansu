@@ -84,7 +84,7 @@ $sent = 0;
 // refuses the next one). The browser asks for the next piece by itself.
 // Right after a jump in the timeline (cookie set by the player) the first piece is small,
 // so the picture starts sooner; then pieces are big again.
-$chunk = (int)(getenv('NT_CHUNK') ?: 16 * 1024 * 1024);
+$chunk = (int)(getenv('NT_CHUNK') ?: 8 * 1024 * 1024);
 // The speed test in Ajustes can choose another size for this browser (1–64 MB).
 $custom = (int)($_COOKIE['nt_chunk'] ?? 0);
 if ($custom >= 1024 * 1024 && $custom <= 64 * 1024 * 1024) $chunk = $custom;
