@@ -313,7 +313,7 @@ function homeScreen(ctx) {
   if (favCh.length) scroller.append(shelf('Canales favoritos', favCh, (c, i) => chCard(favCh, c, i), { live: true }));
   // A current picture for the channels of this page, taken one by one in the background.
   const tourList = [...new Map([...recent.slice(0, 10), ...favCh.slice(0, 8), ...sports.map((e) => e.channel), ...news.map((e) => e.channel)]
-    .map((c) => [c.id, c])).values()].slice(0, 20);
+    .map((c) => [c.id, c])).values()].slice(0, 12);
   if (tourList.length) ctx.cleanup(thumbTour(scroller, tourList));
   return scroller;
 }
@@ -853,7 +853,7 @@ function settingsScreen(ctx) {
     row('Tamaño de los subtítulos', 'XS es el tamaño de Apple TV.', segmented(['XS', 'S', 'M', 'L', 'XL'], D.prefs.subtitleSize, (i) => { D.prefs.subtitleSize = i; })),
     row('Estilo de los subtítulos', 'Sombra suave, o caja negra translúcida como en Apple TV.', segmented(['Sin fondo', 'Fondo'], D.prefs.subtitleBackground ? 1 : 0, (i) => { D.prefs.subtitleBackground = i === 1; })),
     h('h2', null, 'Interfaz'),
-    row('Miniaturas en directo', 'Inicio va tomando, de uno en uno y en segundo plano, una imagen de lo que emite cada canal (cada 15 minutos). Se para mientras ves algo. Cada imagen gasta 1–2 MB de tu hosting.', yesNo('autoThumbs')),
+    row('Miniaturas en directo', 'Inicio va tomando, de uno en uno y en segundo plano, una imagen de lo que emite cada canal (cada 20 minutos). Se para mientras ves algo. Cada imagen gasta 1–2 MB de tu hosting.', yesNo('autoThumbs')),
     row('Vista previa en directo', 'Los destacados de Inicio y En vivo muestran el canal en movimiento y sin sonido. Usa una conexión de tu proveedor mientras se ve.', yesNo('livePreview')),
     row('Reducir animaciones', 'Quita el zoom lento y los fundidos. Útil en ordenadores poco potentes.', yesNo('reduceMotion', () => document.body.classList.toggle('reduce', D.prefs.reduceMotion))),
     row('Conexión directa', 'Sin pasar por tu servidor. Solo funciona si tu proveedor usa https y lo permite; si algo deja de cargar, vuelve a "No".', yesNo('direct')),
@@ -871,6 +871,7 @@ function settingsScreen(ctx) {
 async function proxyError(r) {
   let j = null;
   try { j = await r.json(); } catch { /* not JSON */ }
+  if (j && j.error === 'connect') return D.explainFailure(r.status, j).replace(/\.$/, '');
   if (r.status === 502 && !j) return 'tu hosting cortó la petición (error 502 del servidor)';
   if (j && j.error === 'connect') return 'tu hosting no logra conectar con el proveedor' + (j.msg ? ` (${j.msg})` : '');
   if (r.status === 401) return 'la sesión caducó, vuelve a entrar';

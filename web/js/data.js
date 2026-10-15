@@ -103,10 +103,30 @@ export function imgUrl(url) {
   return null;
 }
 
+/** Turns an error answer of the hosting's proxy into words. */
+export function explainFailure(status, j) {
+  if (status === 401) return 'Tu sesión ha caducado. Vuelve a entrar.';
+  if (j && j.error === 'connect') {
+    const c = j.code;
+    if (c === 6) return 'Tu hosting no encuentra el servidor del proveedor. Revisa la dirección o prueba otra que te haya dado el proveedor.';
+    if (c === 7) return 'El proveedor rechaza las conexiones de tu hosting. Puede que haya bloqueado su IP durante un rato; la app de la tele seguirá funcionando porque usa la de tu casa.';
+    if (c === 28) return 'El proveedor no responde a tu hosting (se agotó el tiempo). Puede estar caído o bloqueando su IP.';
+    return 'Tu hosting no consigue conectar con el proveedor' + (j.msg ? ` (${j.msg})` : '') + '.';
+  }
+  if (j && j.error === 'blocked') return 'Esa dirección no está permitida.';
+  if ([403, 429, 458, 509].includes(status)) return `El proveedor rechazó la petición (código ${status}). Puede que haya otra conexión abierta con tu cuenta.`;
+  if (status === 502 || status === 503 || status === 504) return `Tu hosting cortó la petición (error ${status}).`;
+  return 'El servidor respondió ' + status;
+}
+async function failureOf(r) {
+  let j = null;
+  try { j = JSON.parse(await r.text()); } catch { /* not JSON */ }
+  return explainFailure(r.status, j);
+}
+
 async function getJson(url) {
   const r = await fetch(viaProxy(url), { credentials: 'same-origin' });
-  if (r.status === 401) throw new Error('Tu sesión ha caducado. Vuelve a entrar.');
-  if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+  if (!r.ok) throw new Error(await failureOf(r));
   const text = await r.text();
   try {
     return JSON.parse(text);
@@ -320,7 +340,7 @@ const absolute = (u) => new URL(u, location.href).href;
 
 function runWorker(msg, progress) {
   return new Promise((resolve, reject) => {
-    const w = new Worker('js/worker.js?v=1');
+    const w = new Worker('js/worker.js?v=2');
     w.onmessage = (e) => {
       const d = e.data;
       if (d.progress) progress(d.progress);

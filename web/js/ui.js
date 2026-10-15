@@ -529,8 +529,8 @@ let tourSnap = null; // the channel being captured right now
  * only loads a couple of seconds), saves a frame of what each one is showing and swaps it
  * into the cards under root. Waits while anything else plays; repeats every `every` ms.
  */
-export function thumbTour(root, channels, { every = 15 * 60000 } = {}) {
-  let stopped = false, timer = null;
+export function thumbTour(root, channels, { every = 20 * 60000 } = {}) {
+  let stopped = false, timer = null, fails = 0;
   const tried = new Map();
   const busy = () => document.hidden || Preview.current || document.querySelector('.player');
   const due = (c) => {
@@ -552,7 +552,14 @@ export function thumbTour(root, channels, { every = 15 * 60000 } = {}) {
     const res = await snap(c);
     if (res === 'aborted') tried.delete(c.id);
     if (res === 'ok' && root.isConnected) refreshCaptures(root);
-    next(1500);
+    // Calm pace, so the provider never sees a burst of connections; after two failures
+    // in a row (provider busy or refusing) it waits half an hour.
+    fails = res === 'fail' ? fails + 1 : res === 'ok' ? 0 : fails;
+    if (fails >= 2) {
+      fails = 0;
+      return next(30 * 60000);
+    }
+    next(4000);
   }
   function snap(c) {
     return new Promise((resolve) => {
