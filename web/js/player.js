@@ -58,6 +58,7 @@ function createPlayer(items, startIndex, startMs) {
   let usingDirect = false;
   let currentDirect = null;
   let forceProxy = false;
+  let pendingDirectFail = null;
   let probeTimer = null;
   /** Tells the hosting a seek just happened, so it answers with a small first piece. */
   const markSeek = () => {
@@ -206,6 +207,10 @@ function createPlayer(items, startIndex, startMs) {
   video.addEventListener('loadedmetadata', () => {
     clearTimeout(probeTimer);
     if (usingDirect && currentDirect) directMemo.set(currentDirect, true);
+    if (!usingDirect && pendingDirectFail) {
+      directMemo.set(pendingDirectFail, false);
+      pendingDirectFail = null;
+    }
     updateAudioBtn();
   });
   video.addEventListener('volumechange', () => setIcon(muteBtn, video.muted || video.volume === 0 ? 'mute' : 'vol'));
@@ -318,7 +323,8 @@ function createPlayer(items, startIndex, startMs) {
   /** Direct playback didn't work: remember it and use the hosting from here on. */
   function toProxy() {
     if (closed) return;
-    if (currentDirect) directMemo.set(currentDirect, false);
+    // Only remembered as "no direct" if the hosting then works (the movie itself may be broken).
+    pendingDirectFail = currentDirect;
     forceProxy = true;
     load(lastPos * 1000, true);
   }
@@ -372,7 +378,10 @@ function createPlayer(items, startIndex, startMs) {
       title = 'Se cortó la conexión';
       hint = 'El proveedor dejó de enviar el vídeo. Suele pasar si hay otra conexión abierta con tu cuenta (la tele u otra pestaña). Reintentar sigue donde ibas.';
     } else if (it.kind !== 'live' && /\.(mkv|avi)(\?|$)/i.test(it.url || '')) {
-      hint = 'Este archivo (MKV/AVI) puede no reproducirse en el navegador. En la app de la tele sí funciona.';
+      const safari = /Safari/.test(navigator.userAgent) && !/Chrome|Chromium|CriOS|Edg|OPR|Android/.test(navigator.userAgent);
+      hint = safari
+        ? 'Safari no reproduce archivos MKV. Ábrelo en Chrome o Edge, o en la app de la tele.'
+        : 'Este archivo (MKV/AVI) puede no reproducirse en el navegador. En la app de la tele sí funciona.';
     } else {
       hint = 'Puede que la emisión esté caída o que haya demasiadas conexiones a la vez con tu cuenta.';
     }

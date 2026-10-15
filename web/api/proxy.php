@@ -78,10 +78,17 @@ $range = $_SERVER['HTTP_RANGE'] ?? null;
 // Right after a jump in the timeline (cookie set by the player) the first piece is small,
 // so the picture starts sooner; then pieces are big again.
 $chunk = (int)(getenv('NT_CHUNK') ?: 16 * 1024 * 1024);
+// The speed test in Ajustes can choose another size for this browser (1–64 MB).
+$custom = (int)($_COOKIE['nt_chunk'] ?? 0);
+if ($custom >= 1024 * 1024 && $custom <= 64 * 1024 * 1024) $chunk = $custom;
 $seekHint = isset($_COOKIE['nt_seek']);
 if ($seekHint) $chunk = min($chunk, (int)(getenv('NT_SEEK_CHUNK') ?: 2 * 1024 * 1024));
 $usedHint = false;
-if ($range && preg_match('/^bytes=(\d+)-$/', trim($range), $m)) {
+// Safari's video player expects "the rest of the file" when it asks for it: no pieces there.
+$ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+$safari = str_contains($ua, 'AppleCoreMedia')
+    || (str_contains($ua, 'Safari') && !preg_match('/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS|Android/', $ua));
+if (!$safari && $range && preg_match('/^bytes=(\d+)-$/', trim($range), $m)) {
     $range = 'bytes=' . $m[1] . '-' . ((int)$m[1] + $chunk - 1);
     $usedHint = $seekHint;
 }
@@ -165,6 +172,7 @@ for ($hop = 0; $hop < 6; $hop++) {
     ]);
     curl_exec($ch);
     $err = curl_errno($ch);
+    $errMsg = curl_error($ch);
     $effective = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL) ?: $current;
     curl_close($ch);
 
@@ -173,7 +181,7 @@ for ($hop = 0; $hop < 6; $hop++) {
         continue;
     }
     if ($playlist && !$started) {
-        if ($status === 0) nt_json(['error' => 'connect', 'code' => $err], 502);
+        if ($status === 0) nt_json(['error' => 'connect', 'code' => $err, 'msg' => $errMsg], 502);
         http_response_code($status);
         header('Cache-Control: no-store');
         if (nt_is_hls($buffer)) {
@@ -186,7 +194,7 @@ for ($hop = 0; $hop < 6; $hop++) {
         exit;
     }
     if (!$started) {
-        if ($status === 0) nt_json(['error' => 'connect', 'code' => $err], 502);
+        if ($status === 0) nt_json(['error' => 'connect', 'code' => $err, 'msg' => $errMsg], 502);
         http_response_code($status);
         header('Cache-Control: no-store');
     }

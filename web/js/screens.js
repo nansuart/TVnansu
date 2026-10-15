@@ -867,56 +867,109 @@ function settingsScreen(ctx) {
   return wrap;
 }
 
-/** Settings: measures the hosting (time to first byte, speed) and the direct connection. */
+/** Reads a proxy error into words for the speed test. */
+async function proxyError(r) {
+  let j = null;
+  try { j = await r.json(); } catch { /* not JSON */ }
+  if (r.status === 502 && !j) return 'tu hosting cortó la petición (error 502 del servidor)';
+  if (j && j.error === 'connect') return 'tu hosting no logra conectar con el proveedor' + (j.msg ? ` (${j.msg})` : '');
+  if (r.status === 401) return 'la sesión caducó, vuelve a entrar';
+  if ([403, 429, 458, 509, 503].includes(r.status)) return `el proveedor rechazó la conexión (código ${r.status}); puede que haya otra conexión abierta con tu cuenta`;
+  return `el proveedor respondió ${r.status}`;
+}
+
+/** Downloads a byte range through the hosting: [seconds to first byte, total seconds, bytes]. */
+async function timedRange(url, from, to) {
+  const t0 = performance.now();
+  const r = await fetch(D.viaProxy(url), { credentials: 'same-origin', headers: { Range: `bytes=${from}-${to}` } });
+  const first = (performance.now() - t0) / 1000;
+  if (!r.ok) throw new Error(await proxyError(r));
+  const reader = r.body.getReader();
+  let bytes = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    bytes += value.length;
+  }
+  return [first, (performance.now() - t0) / 1000, bytes];
+}
+
+const fmtS = (x) => x.toFixed(1).replace('.', ',');
+
+/**
+ * Settings: measures the hosting with a movie (trying a few, as one may be broken),
+ * detects whether the hosting holds each piece until it is complete, and then picks
+ * the size of the pieces for this browser. Also checks the direct connection.
+ */
 function speedTest() {
   const out = h('div.speed');
   const btn = button('Probar', async () => {
-    const m = D.recentMovies(1)[0] || S.vod[0];
-    if (!m) {
+    const seen = new Set();
+    const cands = [
+      ...Object.values(S.progress).filter((p) => p.kind === 'movie' && p.url).map((p) => ({ name: p.title, url: p.url })),
+      ...D.recentMovies(6).map((m) => ({ name: cleanTitle(m.name), url: D.movieUrl(m) })),
+    ].filter((c) => !seen.has(c.url) && seen.add(c.url)).slice(0, 3);
+    if (!cands.length) {
       out.textContent = 'No hay películas en la lista para probar.';
       return;
     }
     btn.disabled = true;
-    out.replaceChildren(h('span.dim', null, 'Midiendo…'));
-    const raw = D.movieUrl(m);
     const lines = [];
-    try {
-      const t0 = performance.now();
-      const r = await fetch(D.viaProxy(raw), { credentials: 'same-origin', headers: { Range: 'bytes=0-4194303' } });
-      const first = (performance.now() - t0) / 1000;
-      if (!r.ok) throw new Error('respuesta ' + r.status);
-      const reader = r.body.getReader();
-      let bytes = 0;
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        bytes += value.length;
+    const say = (msg) => out.replaceChildren(...lines.map((l) => h('div', null, l)), msg ? h('div.dim', null, msg) : '');
+    let ok = null, lastErr = '';
+    for (const c of cands) {
+      say(`Probando con «${c.name}»…`);
+      try {
+        const small = await timedRange(c.url, 0, 262143);
+        const big = await timedRange(c.url, 262144, 262144 + 6 * 1048576 - 1);
+        ok = { c, small, big };
+        break;
+      } catch (e) {
+        lastErr = e.message;
       }
-      const total = (performance.now() - t0) / 1000;
-      const mbps = (bytes * 8) / 1e6 / Math.max(0.05, total - first);
-      lines.push(`Por tu hosting: empieza en ${first.toFixed(1).replace('.', ',')} s · ${mbps.toFixed(0)} Mbit/s`);
-    } catch (e) {
-      lines.push('Por tu hosting: falló (' + e.message + ')');
     }
-    const direct = D.directVodUrl(raw);
-    if (direct && direct !== D.viaProxy(raw)) {
-      const ok = await new Promise((res) => {
+    if (!ok) {
+      lines.push(`Por tu hosting: falló, ${lastErr}.`);
+      say();
+      btn.disabled = false;
+      return;
+    }
+    const [f1] = ok.small;
+    const [f2, t2, bytes] = ok.big;
+    const bps = bytes / Math.max(0.05, t2 - f2 > 0.3 ? t2 - f2 : t2);
+    lines.push(`Por tu hosting: responde en ${fmtS(f1)} s · ${Math.round((bytes * 8) / 1e6 / Math.max(0.05, t2))} Mbit/s`);
+    // If 6 MB take much longer to *start* than 256 KB, the hosting holds pieces until complete:
+    // then smaller pieces start sooner.
+    const holds = f2 - f1 > 1;
+    let chunk = 16;
+    if (holds) chunk = Math.max(2, Math.min(16, Math.round((bps * 1.5) / 1048576)));
+    try {
+      if (chunk === 16) document.cookie = 'nt_chunk=; path=/; max-age=0; SameSite=Lax';
+      else document.cookie = `nt_chunk=${chunk * 1048576}; path=/; max-age=31536000; SameSite=Lax`;
+    } catch { /* empty */ }
+    lines.push(holds
+      ? `Tu hosting espera a tener cada trozo entero antes de enviarlo: ajustado a trozos de ${chunk} MB para que arranque antes.`
+      : 'Tu hosting envía el vídeo según llega: trozos de 16 MB.');
+    const direct = D.directVodUrl(ok.c.url);
+    if (direct) {
+      say('Probando la conexión directa…');
+      const t = await new Promise((res) => {
         const v = document.createElement('video');
         v.muted = true;
         v.preload = 'metadata';
         const t0 = performance.now();
-        const end = (val) => { clearTimeout(t); v.removeAttribute('src'); try { v.load(); } catch { /* empty */ } res(val); };
-        const t = setTimeout(() => end(null), 8000);
+        const end = (val) => { clearTimeout(tm); v.removeAttribute('src'); try { v.load(); } catch { /* empty */ } res(val); };
+        const tm = setTimeout(() => end(null), 8000);
         v.onloadedmetadata = () => end((performance.now() - t0) / 1000);
         v.onerror = () => end(null);
         v.src = direct;
       });
-      D.directMemo.set(direct, ok != null);
-      lines.push(ok != null
-        ? `Conexión directa: sí, arranca en ${ok.toFixed(1).replace('.', ',')} s (películas y series la usan solas)`
-        : 'Conexión directa: tu proveedor no la permite (todo va por tu hosting)');
+      D.directMemo.set(direct, t != null);
+      lines.push(t != null
+        ? `Conexión directa: sí, arranca en ${fmtS(t)} s (películas y series la usan solas).`
+        : 'Conexión directa: tu proveedor no la permite, todo va por tu hosting.');
     }
-    out.replaceChildren(...lines.map((l) => h('div', null, l)));
+    say();
     btn.disabled = false;
   });
   return h('div.speedbox', null, out, btn);
