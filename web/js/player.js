@@ -48,6 +48,12 @@ function createPlayer(items, startIndex, startMs) {
   let scrubTimer = null;
   let nextDismissed = -1;
   let closed = false;
+  // Recovery: big files through the hosting sometimes stop arriving; reconnect at the same point.
+  let everPlayed = false;
+  let retries = 0;
+  let lastPos = 0;
+  let stallTimer = null;
+  let retryTimer = null;
   let overBar = false;
   let dragging = false;
   const item = () => items[index];
@@ -161,13 +167,23 @@ function createPlayer(items, startIndex, startMs) {
 
   // ------------------------------------------------------------ video events
 
-  video.addEventListener('waiting', () => (spin.style.display = 'flex'));
+  video.addEventListener('waiting', () => {
+    spin.style.display = 'flex';
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => { if (!video.paused) recover(); }, 15000);
+  });
   video.addEventListener('playing', () => {
     spin.style.display = 'none';
     errBox.style.display = 'none';
+    clearTimeout(stallTimer);
+    everPlayed = true;
   });
-  video.addEventListener('canplay', () => (spin.style.display = 'none'));
+  video.addEventListener('canplay', () => { spin.style.display = 'none'; clearTimeout(stallTimer); });
   video.addEventListener('timeupdate', () => {
+    if (video.currentTime > 0.5) {
+      lastPos = video.currentTime;
+      if (retries && everPlayed && video.currentTime > 0) retries = Math.max(0, retries - 0.01);
+    }
     if (!isLive()) renderTime();
     checkNextUp();
   });
@@ -226,8 +242,15 @@ function createPlayer(items, startIndex, startMs) {
     st.textContent = `video::cue{font-size:clamp(15px, ${sizes[prefs.subtitleSize] || 3.4}vh, 72px)}`;
   }
 
-  function load(seekMs = 0) {
+  function load(seekMs = 0, isRetry = false) {
     stopEngines();
+    clearTimeout(stallTimer);
+    clearTimeout(retryTimer);
+    if (!isRetry) {
+      retries = 0;
+      everPlayed = false;
+    }
+    lastPos = seekMs / 1000;
     triedTs = false;
     errBox.style.display = 'none';
     spin.style.display = 'flex';
@@ -261,9 +284,30 @@ function createPlayer(items, startIndex, startMs) {
     try { video.load(); } catch { /* empty */ }
   }
 
+  /** The video stopped or failed after playing: reconnect where it was, a few times. */
+  function recover() {
+    if (closed) return;
+    clearTimeout(stallTimer);
+    if (retries >= 3) {
+      showError();
+      return;
+    }
+    retries = Math.floor(retries) + 1;
+    const pos = isLive() ? 0 : lastPos * 1000;
+    stopEngines();
+    spin.style.display = 'flex';
+    errBox.style.display = 'none';
+    // A short pause lets the previous connection with the provider close first.
+    retryTimer = setTimeout(() => load(pos, true), 1200 * retries);
+  }
+
   function onFatal() {
     if (closed) return;
     const it = item();
+    if (everPlayed || retries > 0) {
+      recover();
+      return;
+    }
     if (it.kind === 'live' && !triedTs && !it.channel.url) {
       // HLS refused: try the plain TS stream.
       triedTs = true;
@@ -277,18 +321,26 @@ function createPlayer(items, startIndex, startMs) {
   function showError() {
     spin.style.display = 'none';
     const it = item();
-    const vodHint = it.kind !== 'live' && /\.(mkv|avi)(\?|$)/i.test(it.url || '')
-      ? 'Este formato (MKV/AVI) puede no reproducirse en el navegador. En la app de la tele sí funciona.'
-      : 'Puede que la emisión esté caída o que haya demasiadas conexiones a la vez.';
+    clearTimeout(stallTimer);
+    let title = 'No se pudo reproducir';
+    let hint;
+    if (everPlayed) {
+      title = 'Se cortó la conexión';
+      hint = 'El proveedor dejó de enviar el vídeo. Suele pasar si hay otra conexión abierta con tu cuenta (la tele u otra pestaña). Reintentar sigue donde ibas.';
+    } else if (it.kind !== 'live' && /\.(mkv|avi)(\?|$)/i.test(it.url || '')) {
+      hint = 'Este archivo (MKV/AVI) puede no reproducirse en el navegador. En la app de la tele sí funciona.';
+    } else {
+      hint = 'Puede que la emisión esté caída o que haya demasiadas conexiones a la vez con tu cuenta.';
+    }
     const retry = h('button.pill.primary', { type: 'button' }, 'Reintentar');
-    retry.addEventListener('click', () => load(isLive() ? 0 : video.currentTime * 1000));
+    retry.addEventListener('click', () => load(isLive() ? 0 : lastPos * 1000));
     const btns = h('div.errbtns', null, retry);
     if (isLive() && items.length > 1) {
       const nx = h('button.pill', { type: 'button' }, 'Siguiente canal');
       nx.addEventListener('click', () => goTo(index + 1));
       btns.append(nx);
     }
-    errBox.replaceChildren(h('div.et', null, 'No se pudo reproducir'), h('div.dim', null, vodHint), btns);
+    errBox.replaceChildren(h('div.et', null, title), h('div.dim', null, hint), btns);
     errBox.style.display = 'block';
     showControls();
   }
@@ -499,9 +551,17 @@ function createPlayer(items, startIndex, startMs) {
       return o;
     };
     const hls = engines.hls;
+    const native = video.audioTracks; // only some browsers (Safari) expose a file's audio tracks
+    const isFile = !isLive() && !hls;
     if (hls && hls.audioTracks && hls.audioTracks.length > 1) {
       content.append(h('h4', null, 'Audio'));
       hls.audioTracks.forEach((t, i) => content.append(opt(t.name || t.lang || `Pista ${i + 1}`, hls.audioTrack === i, () => { hls.audioTrack = i; openTracks(); })));
+    } else if (!hls && native && native.length > 1) {
+      content.append(h('h4', null, 'Audio'));
+      [...native].forEach((t, i) => content.append(opt(t.label || t.language || `Pista ${i + 1}`, t.enabled, () => {
+        [...native].forEach((x, j) => (x.enabled = j === i));
+        openTracks();
+      })));
     }
     const tracks = [...(video.textTracks || [])].filter((t) => t.kind === 'subtitles' || t.kind === 'captions');
     content.append(h('h4', null, 'Subtítulos'));
@@ -511,7 +571,11 @@ function createPlayer(items, startIndex, startMs) {
       t.mode = 'showing';
       openTracks();
     })));
-    if (!tracks.length) content.append(h('div.dim.note', null, 'Esta emisión no trae subtítulos que el navegador pueda mostrar.'));
+    if (!tracks.length) {
+      content.append(h('div.dim.note', null, isFile
+        ? 'Los subtítulos e idiomas que van dentro del archivo de vídeo (MKV o MP4) no se pueden elegir desde el navegador: Chrome, Edge y Firefox no los muestran. En la app de la tele sí.'
+        : 'Esta emisión no trae subtítulos que el navegador pueda mostrar.'));
+    }
     content.append(h('h4', null, 'Tamaño'));
     const sizes = h('div.chipset');
     ['XS', 'S', 'M', 'L', 'XL'].forEach((l, i) => {
@@ -565,7 +629,7 @@ function createPlayer(items, startIndex, startMs) {
     const live = isLive();
     switch (k) {
       case 'Enter':
-        if (errBox.style.display !== 'none') load(live ? 0 : video.currentTime * 1000);
+        if (errBox.style.display !== 'none') load(live ? 0 : lastPos * 1000);
         else if (live) openChannels();
         else togglePlay(true);
         return true;
@@ -661,6 +725,8 @@ function createPlayer(items, startIndex, startMs) {
     clearTimeout(capTimer);
     clearTimeout(hideTimer);
     clearTimeout(clickTimer);
+    clearTimeout(stallTimer);
+    clearTimeout(retryTimer);
     offKey();
     document.removeEventListener('fullscreenchange', onFs);
     document.removeEventListener('visibilitychange', onHide);

@@ -71,6 +71,14 @@ function nt_rewrite_m3u8(string $body, string $base): string
 while (ob_get_level() > 0) @ob_end_clean();
 
 $range = $_SERVER['HTTP_RANGE'] ?? null;
+// Movies and episodes: the browser asks for "the rest of the file" (bytes=N-). Serving it
+// in pieces keeps each request short: shared hostings buffer long responses, and a
+// download left running keeps a second connection open with the provider (which then
+// refuses the next one). The browser asks for the next piece by itself.
+$chunk = (int)(getenv('NT_CHUNK') ?: 16 * 1024 * 1024);
+if ($range && preg_match('/^bytes=(\d+)-$/', trim($range), $m)) {
+    $range = 'bytes=' . $m[1] . '-' . ((int)$m[1] + $chunk - 1);
+}
 $current = $url;
 $isPlaylistUrl = fn(string $u) => (bool)preg_match('~\.m3u8($|\?)~i', $u);
 

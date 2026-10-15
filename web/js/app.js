@@ -398,7 +398,7 @@ function authScreen(setup) {
     return h('div.center', null,
       h('div.brand-big'),
       h('div.form', null,
-        h('div.t-title', { style: { textAlign: 'center' } }, setup ? 'Protege tu nansu tv' : 'Entrar'),
+        setup ? null : h('div.t-title', { style: { textAlign: 'center' } }, 'Entrar'),
         setup ? h('div.dim', { style: { textAlign: 'center' } }, 'Es la primera vez que se abre esta web. Crea una contraseña para que solo tú puedas usarla; se guarda cifrada en tu hosting.') : null,
         input, input2, err, btn));
   };
