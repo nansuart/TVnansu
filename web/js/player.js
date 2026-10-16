@@ -383,7 +383,7 @@ function createPlayer(items, startIndex, startMs) {
 
   function subAttrs(el) {
     el.setAttribute('subtitlesize', String([0.85, 1, 1.15, 1.3, 1.5][prefs.subtitleSize] || 1));
-    el.setAttribute('subtitlebg', prefs.subtitleBackground ? '0.6' : '0');
+    el.setAttribute('subtitlebg', prefs.subtitleBackground ? '0.63' : '0');
     el.setAttribute('subtitleedge', prefs.subtitleBackground ? 'none' : 'shadow');
   }
 
@@ -430,8 +430,22 @@ function createPlayer(items, startIndex, startMs) {
       st.dataset.nt = '';
       root.append(st);
     }
-    const shadow = prefs.subtitleBackground ? 'none' : '0 0 3px rgba(0,0,0,.95), 0 1px 2px rgba(0,0,0,.9), 0 2px 10px rgba(0,0,0,.6)';
-    st.textContent = `.movi-subtitle-line { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif !important; font-weight: 500 !important; letter-spacing: .005em; line-height: 1.25 !important; text-shadow: ${shadow} !important; -webkit-font-smoothing: antialiased; }`;
+    const bg = !!prefs.subtitleBackground;
+    const shadow = bg ? 'none' : '0 0 3px rgba(0,0,0,.95), 0 1px 2px rgba(0,0,0,.9), 0 2px 10px rgba(0,0,0,.6)';
+    st.textContent = `
+      .movi-subtitle-line { font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif !important; font-weight: 500 !important; letter-spacing: .005em; line-height: 1.25 !important; text-shadow: ${shadow} !important; -webkit-font-smoothing: antialiased; }
+      /* Lines appear and leave in one cut, like on the TV: no word fade, no slide. */
+      .movi-subtitle-new, .movi-subtitle-static { animation: none !important; opacity: 1 !important; }
+      .movi-subtitle-block, .movi-subtitle-block.movi-subtitle-advance { animation: none !important; transform: none !important; }
+      /* The caption is not a control here: no dragging it around, no transcript on click. */
+      .movi-subtitle-block { pointer-events: none !important; cursor: default !important; }
+      ${bg ? `
+      /* "Fondo": a dark box around each line, as in the TV app. The library only
+         draws one for WebVTT, so ordinary film subtitles (SRT/ASS) need it here. */
+      .movi-subtitle-block { background: none !important; padding: 0 !important; }
+      .movi-subtitle-line { width: fit-content !important; max-width: 100%; margin-left: auto !important; margin-right: auto !important; padding: .08em .45em !important; border-radius: 4px !important; background: rgba(0, 0, 0, .63) !important; }
+      .movi-subtitle-line + .movi-subtitle-line { margin-top: 2px !important; }` : `
+      .movi-subtitle-line { background: none !important; }`}`;
   }
 
   /** Puts back the languages chosen last time (audio and subtitles), if the file has them. */

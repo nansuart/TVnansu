@@ -478,7 +478,7 @@ body.kbd .player .opt:focus { outline-offset: -2px; }
 .player .nextup .nb .pill { height: 34px; padding: 0 14px; font-size: 13px; }
 .player .nextup .secs { margin-top: 8px; }
 video::cue { font-family: Inter, sans-serif; font-weight: 500; color: #fff; background: transparent; text-shadow: 0 2px 8px rgba(0, 0, 0, .9); }
-body.subbg video::cue { background: rgba(0, 0, 0, .6); text-shadow: none; }
+body.subbg video::cue { background: rgba(0, 0, 0, .63); text-shadow: none; }
 
 #toast { position: fixed; left: 50%; bottom: 32px; transform: translate(-50%, 16px); background: rgba(34, 34, 40, .97); color: var(--text); padding: 11px 20px; border-radius: 99px; font-size: 14px; font-weight: 500; opacity: 0; transition: opacity .25s, transform .25s; z-index: 100; pointer-events: none; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
