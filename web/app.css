@@ -220,11 +220,15 @@ body.kbd .card:focus .ttl { color: #fff; }
 /* channel logo tiles */
 .logo-tile { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--surface2); }
 .logo-tile img { max-width: 76%; max-height: 68%; object-fit: contain; }
-.logo-tile.light { background: #f2f2f5; }
-.logo-tile img.xo { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .7)) drop-shadow(0 0 3px rgba(255, 255, 255, .25)); }
+.logo-tile { transition: background-color .25s; }
+.logo-tile.tone-d { background: #d5d5da; } /* dark logo: soft light grey, never pure white */
+.logo-tile.tone-w { background: #2e3035; } /* white logo: graphite */
+.logo-tile.tone-d .nm { color: #4a4a52; }
 .logo-tile .nm { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6px; color: var(--dim); font-size: 12.5px; font-weight: 600; }
 .logo-tile img:not(.missing) ~ .nm { display: none; }
 .logo-tile.floating { background: transparent; left: 30%; }
+.logo-tile.floating.tone-d, .logo-tile.floating.tone-w { background: transparent; }
+.logo-tile.floating.tone-d img { filter: brightness(0) invert(.86); }
 
 /* event cards */
 .event { width: var(--event); aspect-ratio: 16/9; border-radius: 12px; position: relative; overflow: hidden; background: var(--surface); cursor: pointer; transition: transform .25s var(--ease), box-shadow .25s; }

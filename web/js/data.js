@@ -658,6 +658,8 @@ export const isAdultChannel = (c, catName) => adultRe.test(fold(c.name)) || adul
  * with the guide loaded, any channel airing a programme that matches `now` joins
  * the list while it lasts (and goes first). Texts are compared without accents.
  */
+// Sports channels that happen to carry a word of another list ("HBO Boxing", "New York Knicks").
+const SPORTY = /\bppv\b|boxing|boxeo|\bnba\b|\bnfl\b|\bnhl\b|\bmlb\b|\bufc\b|\bwwe\b|sport|deport|futbol|soccer|\bf1\b|golf|knicks|warriors|lakers/;
 export const LIST_PRESETS = [
   { key: 'champions', title: 'Champions League', color: '#3B5BDB', on: true, name: /champions|liga de campeones|\bucl\b/, cat: /champions|liga de campeones/, now: /champions|liga de campeones|\bucl\b/ },
   { key: 'laliga', title: 'LaLiga', color: '#E03131', on: true, name: /laliga|la liga\b|hypermotion|liga ea\b|m\+? ?liga|movistar liga|dazn liga/, cat: /laliga|la liga\b/, now: /laliga|la liga\b|hypermotion|liga ea sports/ },
@@ -665,8 +667,8 @@ export const LIST_PRESETS = [
   { key: 'f1', title: 'Fórmula 1 y motor', color: '#F03E3E', on: true, name: /formula ?1|\bf1\b|moto ?gp|\bmotor/, cat: /formula ?1|\bf1\b|\bmotor/, now: /formula 1|\bf1\b|gran premio|moto ?gp/ },
   { key: 'novelas', title: 'Novelas', color: '#D6336C', on: true, name: /novela|pasiones/, cat: /novela/, now: /telenovela/ },
   { key: 'news', title: 'Noticias', color: '#3B6FD4', on: true, name: /noticia|\bnews\b|informa|24 ?h\b|\bcnn\b|euronews|france ?24|\bdw\b|telediario/, cat: /noticia|\bnews\b|informa/, now: null },
-  { key: 'kids', title: 'Infantil', color: '#F08C00', on: true, name: /infantil|\bkids?\b|cartoon|disney ?(junior|jr|channel)|nick|\bbaby|junior|\bclan\b|boing|dreamworks|\bpeques/, cat: /infantil|\bkids?\b|ninos|child|cartoon|\banim/, now: null },
-  { key: 'movies', title: 'Cine', color: '#7048E8', on: true, name: /\bcine|movie|\bfilm|pelicula|\bhbo\b|cinema|\btnt\b|\baxn\b|\bamc\b|paramount|star ?channel|warner|\btcm\b|hollywood|golden|\bspace\b/, cat: /\bcine|movie|\bfilm|pelicula|cinema/, now: null },
+  { key: 'kids', title: 'Infantil', color: '#F08C00', on: true, name: /infantil|\bkids?\b|cartoon|disney ?(junior|jr|channel)|\bnick\b|nick ?jr|nickelodeon|\bbaby|junior|\bclan\b|boing|dreamworks|\bpeques/, cat: /infantil|\bkids?\b|ninos|child|cartoon|\banim/, not: SPORTY, now: null },
+  { key: 'movies', title: 'Cine', color: '#7048E8', on: true, name: /\bcine|movie|\bfilm|pelicula|\bhbo\b|cinema|\btnt\b|\baxn\b|\bamc\b|paramount|star ?channel|warner|\btcm\b|hollywood|\bspace\b/, cat: /\bcine|movie|\bfilm|pelicula|cinema/, not: new RegExp(SPORTY.source + '|novela'), now: null },
   { key: 'latino', title: 'Latino', color: '#0CA678', on: true, name: /^(mx|ar|co|ve|cl|pe|ec|uy|py|bo|do|pr|gt|hn|sv|ni|cr|pa|cu|lat|latam|latino)\s*[:|-]/, cat: /latin|latam|\blat\b|mexic|argentin|colombia|venezuel|chile|\bperu\b|ecuador|uruguay|paraguay|bolivia|centroam|caribe|dominican|puerto rico|guatemala|honduras|salvador|nicaragua|costa rica|panama|\bcuba/, now: null },
   { key: 'sports', title: 'Deportes', color: '#2B8A3E', on: false, name: /deport|sport|futbol|soccer|\bliga\b|laliga|dazn|espn|eurosport|\bnba\b|\bnfl\b|\bf1\b|golf|tenis|tennis|bein|\bufc\b|boxeo/, cat: /deport|sport|futbol|soccer/, now: null },
   { key: 'premier', title: 'Premier League', color: '#5F3DC4', on: false, name: /premier league|\bepl\b/, cat: /premier/, now: /premier league/ },
@@ -700,6 +702,7 @@ export function listMembers(def) {
       const cat = cn.get(c.cat) || '';
       if (isAdultChannel(c, cat)) return false;
       const n = fold(c.name);
+      if (def.not && def.not.test(n)) return false;
       return (def.name && def.name.test(n)) || (def.cat && def.cat.test(cat)) || (def.catSet && def.catSet.has(c.cat));
     });
   });
@@ -712,6 +715,8 @@ function memberIds(def) {
 // "DAZN LaLiga 2 FHD", "DAZN LaLiga 2 HD" and "DAZN LaLiga 2 (backup)" are one channel in a row.
 const qualityRe = /\b(fhd|uhd|4k|hd|sd|hq|lq|hevc|h\.?26[45]|1080[pi]?|720p?|50 ?fps|60 ?fps|backup|bk|alt|raw|vip|plus)\b|\(.*?\)|\[.*?\]/g;
 export const sameChannelKey = (name) => fold(name).replace(qualityRe, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+const idleEvent = (name) => noEvent.test(name) || /\|\s*$/.test(name.trim());
 
 /** The channels of a list for its row: those airing a matching programme now first, then the rest; one per channel. */
 export function listRow(def, limit = 60) {
@@ -732,10 +737,14 @@ export function listRow(def, limit = 60) {
         .sort((a, b) => sportScore(b.p.t) - sportScore(a.p.t))
         .forEach((x) => add(x.c));
     }
+    // Event channels with nothing on ("Champions 05 | UK |", "WNBA 06 | NO EVENTS") go last.
+    const idle = [];
     for (const c of listMembers(def)) {
       if (out.length >= limit) break;
-      add(c);
+      if (idleEvent(c.name)) idle.push(c);
+      else add(c);
     }
+    for (const c of idle) add(c);
     return out;
   });
 }

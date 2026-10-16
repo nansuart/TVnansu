@@ -1,5 +1,5 @@
 // Building blocks shared by the screens: pictures, cards, rows, carousels, live preview.
-import { h, fmt, cleanTitle } from './util.js';
+import { h, fmt, cleanTitle, b64url } from './util.js';
 import { viaProxy, prefs, captureOf, saveCapture, liveUrl, isFavorite, toggleFavorite } from './data.js';
 import { toast } from './util.js';
 import { pushLayer, popLayer, onKey } from './nav.js';
@@ -165,6 +165,87 @@ export function coverImg(src, cls = 'bg') {
   return picture(src, cls);
 }
 
+// ------------------------------------------------------------------ logo plates
+//
+// The plate follows the logo: dark logos on a soft light grey, white ones on graphite,
+// colourful ones (or logos with a background of their own) on the usual dark plate.
+// Each logo is measured once and the result is remembered in this browser. Logos
+// from other servers can't be read by the page, so those are measured through the
+// hosting, two at a time and only once.
+
+const TONE_KEY = 'nt:logoTone';
+let tones = {};
+try { tones = JSON.parse(localStorage.getItem(TONE_KEY) || '{}') || {}; } catch { /* empty */ }
+let toneSave = null;
+function rememberTone(url, t) {
+  tones[url] = t;
+  clearTimeout(toneSave);
+  toneSave = setTimeout(() => {
+    const keys = Object.keys(tones);
+    if (keys.length > 5000) for (const k of keys.slice(0, keys.length - 4000)) delete tones[k];
+    try { localStorage.setItem(TONE_KEY, JSON.stringify(tones)); } catch { /* full or blocked */ }
+  }, 1200);
+}
+/** 'd' dark logo, 'w' white logo, 'c' colour (or own background). Throws when the picture can't be read. */
+function measureTone(img) {
+  const N = 28;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0, N, N);
+  const d = g.getImageData(0, 0, N, N).data;
+  let opaque = 0, lum = 0, sat = 0, dark = 0, white = 0;
+  for (let p = 0; p < d.length; p += 4) {
+    if (d[p + 3] < 140) continue;
+    opaque++;
+    const r = d[p], gg = d[p + 1], b = d[p + 2];
+    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+    const L = (0.2126 * r + 0.7152 * gg + 0.0722 * b) / 255;
+    const S = mx ? (mx - mn) / mx : 0;
+    lum += L;
+    sat += S;
+    if (L < 0.3) dark++;
+    if (L > 0.78 && S < 0.2) white++;
+  }
+  const n = N * N;
+  if (opaque < n * 0.03 || opaque > n * 0.9) return 'c'; // empty, or a logo that fills its box
+  lum /= opaque;
+  sat /= opaque;
+  if (dark / opaque > 0.55 || (lum < 0.5 && sat < 0.2) || (lum < 0.3 && sat < 0.5)) return 'd';
+  if (white / opaque > 0.6 && sat < 0.25) return 'w';
+  return 'c';
+}
+const toneQueue = [];
+let toneBusy = 0;
+function pumpTone() {
+  while (toneBusy < 2 && toneQueue.length) {
+    const [url, apply] = toneQueue.shift();
+    if (tones[url]) {
+      apply(tones[url]);
+      continue;
+    }
+    toneBusy++;
+    const im = new Image();
+    const done = () => {
+      toneBusy--;
+      setTimeout(pumpTone, 60);
+    };
+    im.onload = () => {
+      let t = 'c';
+      try { t = measureTone(im); } catch { /* not readable */ }
+      rememberTone(url, t);
+      apply(t);
+      done();
+    };
+    im.onerror = done;
+    im.src = 'api/proxy.php?u=' + b64url(url);
+  }
+}
+function applyTone(tile, t) {
+  tile.classList.remove('tone-d', 'tone-w');
+  if (t === 'd' || t === 'w') tile.classList.add('tone-' + t);
+}
+
 /** Channel logo on its plate, or the channel name when there is no logo. */
 export function logoTile(url, name, { hideMissing = false } = {}) {
   const tile = h('div.logo-tile');
@@ -174,33 +255,22 @@ export function logoTile(url, name, { hideMissing = false } = {}) {
     else tile.append(nm);
     return tile;
   }
+  if (tones[url]) applyTone(tile, tones[url]);
   const i = picture(url, '', () => {
     if (hideMissing) tile.style.display = 'none';
     else nm.style.display = 'flex';
   });
   i.addEventListener('load', () => {
     if (nm) nm.style.display = 'none';
-    // Dark logos on a light plate so they never disappear. Pictures from other
-    // servers can't be read: they get a faint outline instead.
-    if (!i.src.includes('api/proxy.php')) {
-      i.classList.add('xo');
-      return;
-    }
+    if (tones[url]) return;
     try {
-      const c = document.createElement('canvas');
-      c.width = c.height = 16;
-      const g = c.getContext('2d', { willReadFrequently: true });
-      g.drawImage(i, 0, 0, 16, 16);
-      const d = g.getImageData(0, 0, 16, 16).data;
-      let dark = 0, opaque = 0;
-      for (let p = 0; p < d.length; p += 4) {
-        if (d[p + 3] > 128) {
-          opaque++;
-          if (d[p] + d[p + 1] + d[p + 2] < 180) dark++;
-        }
-      }
-      if (opaque && dark / opaque > 0.22 && opaque < 230) tile.classList.add('light');
-    } catch { /* not readable */ }
+      const t = measureTone(i);
+      rememberTone(url, t);
+      applyTone(tile, t);
+    } catch {
+      toneQueue.push([url, (t) => applyTone(tile, t)]);
+      pumpTone();
+    }
   });
   tile.append(i);
   if (nm) tile.append(nm);
