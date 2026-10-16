@@ -927,7 +927,7 @@ function backRow(ctx, ...extra) {
 
 function gridPage(ctx, kind, cat) {
   const isSeries = kind === 'series';
-  const base = D.catIndex(isSeries ? 'series' : 'vod').get(cat.id) || [];
+  const base = D.uniqueTitles(D.catIndex(isSeries ? 'series' : 'vod').get(cat.id) || []);
   let sort = 0;
   const sorters = [
     (a, b) => b.added - a.added,
@@ -985,6 +985,28 @@ function moviePage(ctx, m) {
       btns.append(button('Desde el principio', () => play([movieItem(m)], 0, 0)));
     } else btns.append(button('Reproducir', () => play([movieItem(m)], 0, 0), { primary: true, icon: 'play' }));
     btns.append(favPill('movie', m));
+    // The same film in other versions (subtitled, dubbed, cinema copy…).
+    const vers = D.versionsOf(m);
+    let versRow = null;
+    if (vers.length > 1) {
+      const labels = vers.map((v) => D.versionLabel(v));
+      const catName = new Map(S.cats.vod.map((c) => [c.id, c.name]));
+      versRow = h('div.versions', { dataset: { group: 'vers' } }, h('span.vl', null, 'Versiones'),
+        ...vers.map((v, i) => {
+          let l = labels[i];
+          if (labels.filter((x) => x === l).length > 1) l += ' · ' + (catName.get(v.cat) || i + 1);
+          const b = h('button.chipbtn.f' + (v.id === m.id ? '.on' : ''), { tabIndex: -1, type: 'button', dataset: { key: 'v' + v.id } }, l);
+          b.addEventListener('click', () => {
+            if (v.id === m.id) return;
+            m = v;
+            draw(null);
+            details();
+            const again = root.querySelector('.versions .chipbtn.on');
+            if (again) again.focus({ preventScroll: true });
+          });
+          return b;
+        }));
+    }
     put(body,
       h('div.eyebrow', null, 'PELÍCULA'),
       h('h1.t-display.clamp2', null, cleanTitle(m.name)),
@@ -993,19 +1015,24 @@ function moviePage(ctx, m) {
       d?.director ? h('div.credits', null, h('span.faint', null, 'Dirección  '), d.director) : null,
       d?.cast ? h('div.credits.clamp2', null, h('span.faint', null, 'Reparto  '), d.cast) : null,
       btns,
+      versRow,
     );
     const sim = D.similarMovies(m);
     rows.replaceChildren(sim.length ? shelf('Más como esto', sim, (x) => movieCard(ctx, x)) : '');
   };
+  const details = () => {
+    const mine = m;
+    D.movieDetails(mine).then((d) => {
+      if (!root.isConnected || mine !== m) return;
+      const a = document.activeElement;
+      const keep = a && root.contains(a) ? a.textContent : null;
+      draw(d);
+      const again = keep && [...root.querySelectorAll('.f')].find((x) => x.textContent === keep);
+      if (again) again.focus({ preventScroll: true });
+    }).catch(() => {});
+  };
   draw(null);
-  D.movieDetails(m).then((d) => {
-    if (!root.isConnected) return;
-    const a = document.activeElement;
-    const keep = a && root.contains(a) ? a.textContent : null;
-    draw(d);
-    const again = keep && [...root.querySelectorAll('.f')].find((x) => x.textContent === keep);
-    if (again) again.focus({ preventScroll: true });
-  }).catch(() => {});
+  details();
   return root;
 }
 
@@ -1170,6 +1197,8 @@ function settingsScreen(ctx) {
     row('Formato del directo (Xtream)', 'HLS va mejor en el navegador. Si un canal no arranca, prueba TS.', segmented(['HLS', 'TS'], D.prefs.liveFormat === 'ts' ? 1 : 0, (i) => { D.prefs.liveFormat = i ? 'ts' : 'm3u8'; })),
     row('Reproductor de películas y series', 'Automático: MKV con el reproductor MKV de la web (idiomas y subtítulos del archivo) y el resto con el del navegador; si uno no puede, prueba el otro. Las demás opciones usan siempre ese reproductor, para comparar. En la pantalla de error también puedes probar otro.',
       segmented(['Automático', 'Navegador', 'MKV (movi)', 'avbridge'], Math.max(0, ['auto', 'native', 'movi', 'avbridge'].indexOf(D.prefs.vodPlayer || (D.prefs.mkvPlayer === false ? 'native' : 'auto'))), (i) => { D.prefs.vodPlayer = ['auto', 'native', 'movi', 'avbridge'][i]; })),
+    row('Logos de los canales', 'nansu tv: logos limpios de una colección abierta (tv-logos) cuando encuentra el canal; tu hosting guarda cada uno la primera vez. Si no lo encuentra, usa el del proveedor.',
+      segmented(['nansu tv', 'Proveedor'], D.prefs.logos === 'provider' ? 1 : 0, (i) => { D.setLogoSource(i ? 'provider' : 'nansu'); })),
     row('Mosca de nansu tv', 'Marca de agua al 30 % en la esquina inferior izquierda. Solo en canales en vivo.', yesNo('watermark')),
     row('Tamaño de los subtítulos', 'XS es el tamaño de Apple TV.', segmented(['XS', 'S', 'M', 'L', 'XL'], D.prefs.subtitleSize, (i) => { D.prefs.subtitleSize = i; })),
     row('Estilo de los subtítulos', 'Sombra suave, o caja negra translúcida como en Apple TV.', segmented(['Sin fondo', 'Fondo'], D.prefs.subtitleBackground ? 1 : 0, (i) => { D.prefs.subtitleBackground = i === 1; })),
@@ -1188,7 +1217,7 @@ function settingsScreen(ctx) {
     h('div.keys', null, ...keys.map(([k, d]) => h('div.key', null, h('kbd', null, k), h('span', null, d)))),
     h('h2', null, 'Acceso'),
     row('Cerrar sesión', 'Para entrar de nuevo hará falta la contraseña de la web.', button('Cerrar sesión', async () => { await D.authPost('logout', ''); location.reload(); })),
-    h('div.t-caption.faint', { style: { marginTop: '32px' } }, 'nansu tv web · Reproductor personal. La web no incluye contenido. Tipografía Inter (OFL), hls.js, mpegts.js y movi-player (Apache 2.0; FFmpeg bajo LGPL).'),
+    h('div.t-caption.faint', { style: { marginTop: '32px' } }, 'nansu tv web · Reproductor personal. La web no incluye contenido. Tipografía Inter (OFL), hls.js, mpegts.js y movi-player (Apache 2.0; FFmpeg bajo LGPL). Logos de canales: colección abierta tv-logos (github.com/tv-logo/tv-logos); las marcas son de sus dueños.'),
   );
   return wrap;
 }

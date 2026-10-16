@@ -45,6 +45,8 @@ export async function kvDel(key) {
 // ------------------------------------------------------------------ preferences (small, localStorage)
 
 const PREF_DEFAULTS = {
+  logos: 'nansu', // 'nansu': clean logos of the open collection when one matches; 'provider': the provider's
+
   watermark: true,
   livePreview: true,
   reduceMotion: false,
@@ -211,6 +213,7 @@ export async function loadAll() {
   const bd = (await kvGet('backdrops')) || {};
   for (const m of S.vod) if (bd[m.id]) m.backdrop = bd[m.id];
   S.serverInfo = (await kvGet('serverInfo')) || null;
+  await applyLogos();
   changed('catalog');
 }
 
@@ -327,6 +330,7 @@ export async function sync(progress = () => {}) {
     kvSet('playlist', pl), kvSet('cats', S.cats), kvSet('live', S.live), kvSet('vod', S.vod),
     kvSet('series', S.series), kvSet('lastSync', S.lastSync),
   ]);
+  await applyLogos();
   changed('catalog');
 }
 
@@ -647,6 +651,110 @@ export function liveNow(limit = 24) {
   });
 }
 
+// ------------------------------------------------------------------ channel logos (open collection)
+//
+// lib/logos/index.json lists the logos of github.com/tv-logo/tv-logos by country. A
+// channel gets one when its name, without country prefix, quality and small words, has
+// exactly the same words as the logo ("M+ LALIGA TV 2 FHD" = laliga-tv-2-por-movistar-plus-es).
+// The hosting downloads each logo the first time (api/logo.php). The provider's logo
+// stays as the fallback (c.plogo).
+
+const LOGO_SOFT = new Set(['tv', 'hd', 'fhd', 'uhd', 'sd', '4k', '8k', 'hdr', 'hz', 'white', 'channel', 'canal', 'por', 'de', 'del', 'la', 'el', 'los', 'las', 'the', 'network', 'y', 'and', 'en', 'e', 'h265', 'hevc', '1080', '1080p', '720', '720p', 'backup', 'alt', 'raw', 'vip', 'fps', '50fps', '60fps', 'live', 'directo', 'op']);
+const COUNTRY_HINT = {
+  es: 'spain', esp: 'spain', spain: 'spain', mx: 'mexico', mex: 'mexico', ar: 'argentina', arg: 'argentina', us: 'united-states', usa: 'united-states',
+  uk: 'united-kingdom', gb: 'united-kingdom', ca: 'canada', pt: 'portugal', br: 'brazil', de: 'germany', it: 'italy', fr: 'france', nl: 'netherlands',
+  co: 'world-latin-america', cl: 'world-latin-america', pe: 'world-latin-america', ve: 'world-latin-america', ec: 'world-latin-america',
+  uy: 'world-latin-america', py: 'world-latin-america', bo: 'world-latin-america', do: 'world-latin-america', cr: 'world-latin-america',
+  lat: 'world-latin-america', latam: 'world-latin-america', latino: 'world-latin-america', au: 'australia', in: 'india', tr: 'turkey', pl: 'poland',
+};
+const COUNTRY_ORDER = ['spain', 'world-latin-america', 'mexico', 'argentina', 'united-states', 'united-kingdom', 'international', 'portugal', 'canada', 'brazil'];
+const prefixRe = /^\W*([a-z]{2,6})\W{0,2}\s*(?:\|\||[:|])\s*/;
+function logoWords(name) {
+  let s = fold(name).replace(/\|([a-z]{2})\|/g, '$1:').trim();
+  let hint = null;
+  const m = s.match(prefixRe);
+  if (m && COUNTRY_HINT[m[1]]) {
+    hint = COUNTRY_HINT[m[1]];
+    s = s.slice(m[0].length);
+  }
+  s = ' ' + s.replace(/[*·•]+/g, ' ') + ' ';
+  s = s.replace(/\bmovistar ?\+|\bmovistar plus\b|\bmovistar\b|(^|\s)m ?\+/g, ' movistarplus ');
+  s = s.replace(/^\s*m\s+(?=\S)/, ' movistarplus ');
+  s = s.replace(/laligatv/g, 'laliga tv').replace(/\+/g, ' plus ').replace(/\(.*?\)|\[.*?\]/g, ' ');
+  s = s.replace(/\bla ?([12])\b(?! ?[a-z])/g, ' tve $1 ').replace(/&/g, ' and ');
+  const all = s.split(/[^a-z0-9]+/).filter(Boolean).map((t) => (t === 'movistarplus' ? 'movistar plus' : t)).join(' ').split(' ');
+  return { hint, words: all.filter((t) => !LOGO_SOFT.has(t)), soft: all.filter((t) => LOGO_SOFT.has(t)) };
+}
+let logoIndex = null; // key → [{c, n, soft}]
+async function loadLogoIndex() {
+  if (logoIndex) return logoIndex;
+  try {
+    const r = await fetch('lib/logos/index.json', { cache: 'force-cache' });
+    const j = await r.json();
+    const map = new Map();
+    for (const [country, names] of Object.entries(j.c || {})) {
+      for (const n of names) {
+        const parts = n.split('-');
+        if (parts.length > 1 && parts[parts.length - 1].length <= 3) parts.pop(); // country suffix
+        const words = parts.filter((t) => !LOGO_SOFT.has(t));
+        if (!words.length) continue;
+        const key = [...new Set(words)].sort().join(' ');
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push({ c: country, n, soft: parts.filter((t) => LOGO_SOFT.has(t)) });
+      }
+    }
+    logoIndex = map;
+  } catch {
+    logoIndex = new Map();
+  }
+  return logoIndex;
+}
+const LATIN = new Set(['world-latin-america', 'mexico', 'argentina']);
+/** The collection's logo for a channel name, or null. */
+export function collectionLogo(name) {
+  if (!logoIndex || !name) return null;
+  const { hint, words, soft } = logoWords(name);
+  if (!words.length || words.every((w) => /^\d+$/.test(w))) return null;
+  let list = logoIndex.get([...new Set(words)].sort().join(' '));
+  // "M+ LaLigaTV Hypermotion": the logo may carry the channel's name without "Movistar Plus".
+  if (!list && words.includes('movistar')) {
+    const rest = words.filter((w) => w !== 'movistar' && w !== 'plus');
+    if (rest.length && !rest.every((w) => /^\d+$/.test(w))) list = logoIndex.get([...new Set(rest)].sort().join(' '));
+  }
+  if (!list) return null;
+  let best = null, bestScore = -Infinity;
+  for (const x of list) {
+    let sc = 0;
+    if (hint && x.c === hint) sc += 6;
+    else if (hint && LATIN.has(hint) && LATIN.has(x.c)) sc += 4;
+    const o = COUNTRY_ORDER.indexOf(x.c);
+    sc += o >= 0 ? 2 * (COUNTRY_ORDER.length - o) / COUNTRY_ORDER.length : 0;
+    if (x.soft.includes('hz')) sc += 1.5; // wide logos fit wide cards
+    if (x.soft.includes('white')) sc -= 1;
+    for (const t of x.soft) if (!['hz', 'white', 'tv', 'por', 'de', 'la', 'el'].includes(t)) sc += soft.includes(t) ? 0.3 : -0.5;
+    if (sc > bestScore) { bestScore = sc; best = x; }
+  }
+  return best ? `api/logo.php?p=${best.c}/${best.n}` : null;
+}
+/** Puts the collection's logos on the channels (keeps the provider's in c.plogo). */
+export async function applyLogos() {
+  if (!S.live.length) return;
+  if (prefs.logos !== 'provider') await loadLogoIndex();
+  for (const c of S.live) {
+    if (c.plogo === undefined) c.plogo = c.logo || '';
+    c.logo = (prefs.logos !== 'provider' && collectionLogo(c.name)) || c.plogo;
+  }
+  memo.clear();
+}
+/** Ajustes: logos of the collection or of the provider. */
+export async function setLogoSource(v) {
+  prefs.logos = v;
+  await applyLogos();
+  changed('catalog');
+}
+/** The provider's logo of a channel whose collection logo failed. */
+export const providerLogoFor = (url) => (url && url.startsWith('api/logo.php') ? S.live.find((c) => c.logo === url)?.plogo || null : null);
+
 // ------------------------------------------------------------------ channel lists (En vivo)
 
 // Adult channels never enter the lists (the parental lock will hide them everywhere).
@@ -873,21 +981,63 @@ export function previewList(x) {
 // ------------------------------------------------------------------ lists
 
 const byAdded = (a, b) => b.added - a.added;
-export const recentMovies = (n = 40) => cached('recentM' + n, () => [...S.vod].sort(byAdded).slice(0, n));
-export const recentSeries = (n = 40) => cached('recentS' + n, () => [...S.series].sort(byAdded).slice(0, n));
+
+// ------------------------------------------------------------------ versions of a title
+//
+// Providers often list the same film several times ("Sacrificio (Sub)", "Sacrificio (Cast)",
+// "Sacrificio (TS)"). Rows show it once (the newest); the film's page offers the versions.
+
+/** Same film, any version: title without tags, plus the year. */
+export const versionKey = (x) => searchName(x.name).replace(/\([^)]{0,16}\)/g, ' ').replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + '|' + (x.year || '');
+function versionMap(kind) {
+  return cached('versions:' + kind, () => {
+    const map = new Map();
+    for (const x of [...(kind === 'series' ? S.series : S.vod)].sort(byAdded)) {
+      const k = versionKey(x);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(x);
+    }
+    return map;
+  });
+}
+/** Keeps the first item of each title. */
+export function uniqueTitles(list) {
+  const seen = new Set();
+  return list.filter((x) => {
+    const k = versionKey(x);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+export const versionsOf = (x, kind = 'movie') => versionMap(kind === 'series' ? 'series' : 'movie').get(versionKey(x)) || [x];
+const VERSION_WORDS = [
+  [/\bsub(titulad[ao]s?)?\b|\bvose?\b/i, 'Subtitulada'], [/\bcast(ellano)?\b|\besp(anol)?\b|\bspanish\b/i, 'Castellano'],
+  [/\blat(ino|am)?\b/i, 'Latino'], [/\bdual\b/i, 'Dual'], [/\b(ts|cam|hdcam|tc|telesync)\b/i, 'Calidad cine'],
+  [/\b(4k|uhd|2160p?)\b/i, '4K'], [/\b(en|eng|english|ingl[eé]s)\b/i, 'Inglés'],
+];
+/** Short name of a version, from the tags of its title ("(Sub)" → "Subtitulada"). */
+export function versionLabel(x) {
+  const tags = [...(x.name || '').matchAll(/[([]([^)\]]{1,16})[)\]]/g)].map((m) => m[1]).join(' ');
+  const out = VERSION_WORDS.filter(([re]) => re.test(tags)).map(([, l]) => l);
+  return out.join(' · ') || 'Original';
+}
+
+export const recentMovies = (n = 40) => cached('recentM' + n, () => uniqueTitles([...S.vod].sort(byAdded).slice(0, n * 3)).slice(0, n));
+export const recentSeries = (n = 40) => cached('recentS' + n, () => uniqueTitles([...S.series].sort(byAdded).slice(0, n * 3)).slice(0, n));
 
 export function recommendedMovies(n = 30) {
   return cached('recM' + n, () => {
-    const rated = [...S.vod].filter((m) => m.rating >= 6.5).sort(byAdded).slice(0, n * 2);
+    const rated = uniqueTitles([...S.vod].filter((m) => m.rating >= 6.5).sort(byAdded).slice(0, n * 4));
     const list = rated.length >= 8 ? rated : [...rated, ...recentMovies(n)];
-    return [...new Map(list.map((m) => [m.id, m])).values()].slice(0, n);
+    return uniqueTitles([...new Map(list.map((m) => [m.id, m])).values()]).slice(0, n);
   });
 }
 export function recommendedSeries(n = 30) {
   return cached('recS' + n, () => {
-    const rated = [...S.series].filter((m) => m.rating >= 6.5).sort(byAdded).slice(0, n * 2);
+    const rated = uniqueTitles([...S.series].filter((m) => m.rating >= 6.5).sort(byAdded).slice(0, n * 4));
     const list = rated.length >= 8 ? rated : [...rated, ...recentSeries(n)];
-    return [...new Map(list.map((m) => [m.id, m])).values()].slice(0, n);
+    return uniqueTitles([...new Map(list.map((m) => [m.id, m])).values()]).slice(0, n);
   });
 }
 
@@ -904,7 +1054,7 @@ export function catIndex(kind) {
   });
 }
 export function inCategory(kind, catId, n = 40) {
-  return (catIndex(kind).get(catId) || []).slice(0, n);
+  return uniqueTitles((catIndex(kind).get(catId) || []).slice(0, n * 3)).slice(0, n);
 }
 
 export function similarMovies(m, n = 20) {
@@ -920,7 +1070,8 @@ export function similarMovies(m, n = 20) {
     })
     .sort((a, b) => b[1] - a[1])
     .map((a) => a[0])
-    .filter((x, i, arr) => searchName(x.name) !== me && arr.findIndex((z) => searchName(z.name) === searchName(x.name)) === i)
+    .filter((x, i, arr) => searchName(x.name) !== me && versionKey(x) !== versionKey(m) && arr.findIndex((z) => searchName(z.name) === searchName(x.name)) === i)
+    .filter((x, i, arr) => arr.findIndex((z) => versionKey(z) === versionKey(x)) === i)
     .slice(0, n);
 }
 

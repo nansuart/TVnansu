@@ -1,6 +1,6 @@
 // Building blocks shared by the screens: pictures, cards, rows, carousels, live preview.
 import { h, fmt, cleanTitle, b64url } from './util.js';
-import { viaProxy, prefs, captureOf, saveCapture, liveUrl, isFavorite, toggleFavorite } from './data.js';
+import { viaProxy, prefs, captureOf, saveCapture, liveUrl, isFavorite, toggleFavorite, providerLogoFor } from './data.js';
 import { toast } from './util.js';
 import { pushLayer, popLayer, onKey } from './nav.js';
 
@@ -120,6 +120,12 @@ export function picture(raw, cls = '', onFail) {
     i.classList.add('missing');
     if (onFail) onFail();
   };
+  if (raw && raw.startsWith('api/logo.php')) { // logos kept by the hosting
+    i.loading = 'lazy';
+    i.onerror = fail;
+    i.src = raw;
+    return i;
+  }
   if (!raw || !/^(https?:|data:)/i.test(raw)) {
     i.classList.add('missing');
     return i;
@@ -173,7 +179,8 @@ export function coverImg(src, cls = 'bg') {
 // from other servers can't be read by the page, so those are measured through the
 // hosting, two at a time and only once.
 
-const TONE_KEY = 'nt:logoTone';
+const TONE_KEY = 'nt:logoTone2';
+try { localStorage.removeItem('nt:logoTone'); } catch { /* empty */ }
 let tones = {};
 try { tones = JSON.parse(localStorage.getItem(TONE_KEY) || '{}') || {}; } catch { /* empty */ }
 let toneSave = null;
@@ -186,33 +193,59 @@ function rememberTone(url, t) {
     try { localStorage.setItem(TONE_KEY, JSON.stringify(tones)); } catch { /* full or blocked */ }
   }, 1200);
 }
-/** 'd' dark logo, 'w' white logo, 'c' colour (or own background). Throws when the picture can't be read. */
+const lin = (v) => {
+  const x = v / 255;
+  return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+};
+const relLum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+const contrast = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const PLATE_DARK = relLum(0x1d, 0x1d, 0x24);
+const PLATE_LIGHT = relLum(0xd5, 0xd5, 0xda);
+const hex = (r, g, b) => '#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+/**
+ * How a logo is shown: 'd' on the light grey plate (dark logos), 'w' on graphite (white
+ * logos), 'c' on the usual plate, or '#rrggbb' when the picture fills its box: the tile
+ * takes the colour of its edge so the card looks filled. Throws when it can't be read.
+ */
 function measureTone(img) {
-  const N = 28;
+  const N = 32;
   const c = document.createElement('canvas');
   c.width = c.height = N;
   const g = c.getContext('2d', { willReadFrequently: true });
   g.drawImage(img, 0, 0, N, N);
   const d = g.getImageData(0, 0, N, N).data;
-  let opaque = 0, lum = 0, sat = 0, dark = 0, white = 0;
-  for (let p = 0; p < d.length; p += 4) {
-    if (d[p + 3] < 140) continue;
-    opaque++;
-    const r = d[p], gg = d[p + 1], b = d[p + 2];
-    const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
-    const L = (0.2126 * r + 0.7152 * gg + 0.0722 * b) / 255;
-    const S = mx ? (mx - mn) / mx : 0;
-    lum += L;
-    sat += S;
-    if (L < 0.3) dark++;
-    if (L > 0.78 && S < 0.2) white++;
+  let opaque = 0, lostDark = 0, lostLight = 0, white = 0, sat = 0;
+  let er = 0, eg = 0, eb = 0, en = 0, eo = 0;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const p = (y * N + x) * 4;
+      const edge = x === 0 || y === 0 || x === N - 1 || y === N - 1;
+      if (edge) {
+        en++;
+        if (d[p + 3] > 200) {
+          eo++;
+          er += d[p]; eg += d[p + 1]; eb += d[p + 2];
+        }
+      }
+      if (d[p + 3] < 140) continue;
+      opaque++;
+      const r = d[p], gg = d[p + 1], b = d[p + 2];
+      const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+      const S = mx ? (mx - mn) / mx : 0;
+      const L = relLum(r, gg, b);
+      sat += S;
+      if (contrast(L, PLATE_DARK) < 2.4) lostDark++;
+      if (contrast(L, PLATE_LIGHT) < 1.9) lostLight++;
+      if (L > 0.6 && S < 0.2) white++;
+    }
   }
   const n = N * N;
-  if (opaque < n * 0.03 || opaque > n * 0.9) return 'c'; // empty, or a logo that fills its box
-  lum /= opaque;
-  sat /= opaque;
-  if (dark / opaque > 0.55 || (lum < 0.5 && sat < 0.2) || (lum < 0.3 && sat < 0.5)) return 'd';
-  if (white / opaque > 0.6 && sat < 0.25) return 'w';
+  if (opaque < n * 0.02) return 'c';
+  // A picture with its own background (a box, a photo): carry its edge colour to the whole tile.
+  if (eo > en * 0.85 && opaque > n * 0.85) return hex(er / eo, eg / eo, eb / eo);
+  const fd = lostDark / opaque, fl = lostLight / opaque;
+  if (fd > 0.3 && fl < fd) return 'd';
+  if (white / opaque > 0.6 && sat / opaque < 0.25) return 'w';
   return 'c';
 }
 const toneQueue = [];
@@ -242,8 +275,13 @@ function pumpTone() {
   }
 }
 function applyTone(tile, t) {
-  tile.classList.remove('tone-d', 'tone-w');
+  tile.classList.remove('tone-d', 'tone-w', 'tone-fill');
+  tile.style.removeProperty('--plate');
   if (t === 'd' || t === 'w') tile.classList.add('tone-' + t);
+  else if (t && t[0] === '#') {
+    tile.classList.add('tone-fill');
+    tile.style.setProperty('--plate', t);
+  }
 }
 
 /** Channel logo on its plate, or the channel name when there is no logo. */
@@ -256,9 +294,18 @@ export function logoTile(url, name, { hideMissing = false } = {}) {
     return tile;
   }
   if (tones[url]) applyTone(tile, tones[url]);
-  const i = picture(url, '', () => {
+  const missing = () => {
     if (hideMissing) tile.style.display = 'none';
     else nm.style.display = 'flex';
+  };
+  const i = picture(url, '', () => {
+    // A logo of the collection that can't be had: the provider's one instead.
+    const alt = providerLogoFor(url);
+    if (alt && tile.parentNode) {
+      tile.replaceWith(logoTile(alt, name, { hideMissing }));
+      return;
+    }
+    missing();
   });
   i.addEventListener('load', () => {
     if (nm) nm.style.display = 'none';
