@@ -154,6 +154,7 @@ export const S = {
   favorites: [], // {kind, id, title, image, at}
   recents: [], // {id, at}
   progress: {}, // uid → {kind, id, title, subtitle, image, pos, dur, at, seriesId}
+  layout: { home: null, live: null, custom: [] }, // order and visibility of rows; lists of your own
   version: 0,
 };
 const listeners = new Set();
@@ -177,10 +178,20 @@ export function cached(key, fn) {
   return v;
 }
 
+/** Like cached(), for values that change with the clock: worked out again each minute (one entry per key). */
+export function cachedMinute(key, fn) {
+  const m = Math.floor(Date.now() / 60000);
+  const hit = memo.get(key);
+  if (hit && hit.m === m) return hit.v;
+  const v = fn();
+  memo.set(key, { m, v });
+  return v;
+}
+
 export async function loadAll() {
-  const [pl, cats, live, vod, series, last, fav, rec, prog] = await Promise.all([
+  const [pl, cats, live, vod, series, last, fav, rec, prog, layout] = await Promise.all([
     kvGet('playlist'), kvGet('cats'), kvGet('live'), kvGet('vod'), kvGet('series'), kvGet('lastSync'),
-    kvGet('favorites'), kvGet('recents'), kvGet('progress'),
+    kvGet('favorites'), kvGet('recents'), kvGet('progress'), kvGet('layout'),
   ]);
   S.playlist = pl || null;
   S.cats = cats || { live: [], vod: [], series: [] };
@@ -191,6 +202,7 @@ export async function loadAll() {
   S.favorites = fav || [];
   S.recents = rec || [];
   S.progress = prog || {};
+  S.layout = { home: null, live: null, custom: [], ...(layout || {}) };
   const epg = await kvGet('epg');
   if (epg) {
     S.epg = new Map(epg.map);
@@ -575,18 +587,27 @@ export function sportScore(title) {
 }
 
 /** Sports and big events airing now, event channels, then a few news channels. */
-export function liveNow(limit = 24) {
-  return cached('liveNow:' + Math.floor(Date.now() / 60000), () => {
+/** What each channel with a guide is airing now: [{c, p}] (worked out once a minute). */
+export function programmesNow() {
+  return cachedMinute('progNow', () => {
     const now = Date.now();
     const byEpg = new Map();
     for (const c of S.live) if (c.epg && !byEpg.has(c.epg)) byEpg.set(c.epg, c);
-    const programmes = [];
+    const out = [];
     for (const [id, list] of S.epg) {
       const c = byEpg.get(id);
       if (!c) continue;
       const p = list.find((x) => x.s <= now && x.e > now);
-      if (p) programmes.push({ c, p });
+      if (p) out.push({ c, p });
     }
+    return out;
+  });
+}
+
+export function liveNow(limit = 24) {
+  return cachedMinute('liveNow:' + limit, () => {
+    const now = Date.now();
+    const programmes = programmesNow();
     const out = [];
     const seenT = new Set(), seenC = new Set();
     const add = (c, title, start, stop, label) => {
@@ -626,42 +647,218 @@ export function liveNow(limit = 24) {
   });
 }
 
-// ------------------------------------------------------------------ themes
+// ------------------------------------------------------------------ channel lists (En vivo)
 
-export const THEMES = [
-  ['SPORTS', 'Deportes', /deport|sport|f[uú]tbol|futbol|soccer|\bliga\b|laliga|dazn|espn|eurosport|\bnba\b|\bnfl\b|\bf1\b|motor|golf|tenis|tennis|bein|\bufc\b|boxeo|\bppv\b|evento|event/i, ['#1F7A4A', '#0F2E21']],
-  ['NEWS', 'Noticias', /noticia|news|informa|24 ?h/i, ['#2A4C9C', '#121D3D']],
-  ['KIDS', 'Infantil', /infantil|kids|niñ|child|cartoon|disney|nick|baby|junior|\bclan\b|boing|anim/i, ['#E8752A', '#5A2410']],
-  ['MOVIES', 'Cine y series', /cine|movie|film|pel[ií]cula|series|\bhbo\b|cinema|\btnt\b|\baxn\b|\bamc\b|paramount|\bvod\b/i, ['#7A2E8C', '#2A0F33']],
-  ['DOCS', 'Documentales', /docu|discovery|national geo|nat ?geo|history|historia|natura|odisea|viaje|travel|ciencia|science/i, ['#1C7C7A', '#0D2E2D']],
-  ['MUSIC', 'Música', /m[uú]sica|music|\bmtv\b|hits|\bradio\b|\bvh1\b|concierto/i, ['#C2307A', '#3D0F28']],
+// Adult channels never enter the lists (the parental lock will hide them everywhere).
+const adultRe = /\bxxx\b|adult|\+ ?18|18 ?\+|for adults|porn|erotic|hustler|playboy|brazzers|private ?tv/;
+export const isAdultChannel = (c, catName) => adultRe.test(fold(c.name)) || adultRe.test(fold(catName || ''));
+
+/**
+ * Ready-made lists. A channel enters by its name or by the category of the provider;
+ * with the guide loaded, any channel airing a programme that matches `now` joins
+ * the list while it lasts (and goes first). Texts are compared without accents.
+ */
+export const LIST_PRESETS = [
+  { key: 'champions', title: 'Champions League', color: '#3B5BDB', on: true, name: /champions|liga de campeones|\bucl\b/, cat: /champions|liga de campeones/, now: /champions|liga de campeones|\bucl\b/ },
+  { key: 'laliga', title: 'LaLiga', color: '#E03131', on: true, name: /laliga|la liga\b|hypermotion|liga ea\b|m\+? ?liga|movistar liga|dazn liga/, cat: /laliga|la liga\b/, now: /laliga|la liga\b|hypermotion|liga ea sports/ },
+  { key: 'nba', title: 'NBA', color: '#C2255C', on: true, name: /\bnba\b/, cat: /\bnba\b/, now: /\bnba\b/ },
+  { key: 'f1', title: 'Fórmula 1 y motor', color: '#F03E3E', on: true, name: /formula ?1|\bf1\b|moto ?gp|\bmotor/, cat: /formula ?1|\bf1\b|\bmotor/, now: /formula 1|\bf1\b|gran premio|moto ?gp/ },
+  { key: 'novelas', title: 'Novelas', color: '#D6336C', on: true, name: /novela|pasiones/, cat: /novela/, now: /telenovela/ },
+  { key: 'news', title: 'Noticias', color: '#3B6FD4', on: true, name: /noticia|\bnews\b|informa|24 ?h\b|\bcnn\b|euronews|france ?24|\bdw\b|telediario/, cat: /noticia|\bnews\b|informa/, now: null },
+  { key: 'kids', title: 'Infantil', color: '#F08C00', on: true, name: /infantil|\bkids?\b|cartoon|disney ?(junior|jr|channel)|nick|\bbaby|junior|\bclan\b|boing|dreamworks|\bpeques/, cat: /infantil|\bkids?\b|ninos|child|cartoon|\banim/, now: null },
+  { key: 'movies', title: 'Cine', color: '#7048E8', on: true, name: /\bcine|movie|\bfilm|pelicula|\bhbo\b|cinema|\btnt\b|\baxn\b|\bamc\b|paramount|star ?channel|warner|\btcm\b|hollywood|golden|\bspace\b/, cat: /\bcine|movie|\bfilm|pelicula|cinema/, now: null },
+  { key: 'latino', title: 'Latino', color: '#0CA678', on: true, name: /^(mx|ar|co|ve|cl|pe|ec|uy|py|bo|do|pr|gt|hn|sv|ni|cr|pa|cu|lat|latam|latino)\s*[:|-]/, cat: /latin|latam|\blat\b|mexic|argentin|colombia|venezuel|chile|\bperu\b|ecuador|uruguay|paraguay|bolivia|centroam|caribe|dominican|puerto rico|guatemala|honduras|salvador|nicaragua|costa rica|panama|\bcuba/, now: null },
+  { key: 'sports', title: 'Deportes', color: '#2B8A3E', on: false, name: /deport|sport|futbol|soccer|\bliga\b|laliga|dazn|espn|eurosport|\bnba\b|\bnfl\b|\bf1\b|golf|tenis|tennis|bein|\bufc\b|boxeo/, cat: /deport|sport|futbol|soccer/, now: null },
+  { key: 'premier', title: 'Premier League', color: '#5F3DC4', on: false, name: /premier league|\bepl\b/, cat: /premier/, now: /premier league/ },
+  { key: 'tennis', title: 'Tenis', color: '#74B816', on: false, name: /tenis|tennis|\batp\b|\bwta\b/, cat: /tenis|tennis/, now: /\batp\b|\bwta\b|roland garros|wimbledon|us open|open de australia|copa davis/ },
+  { key: 'fight', title: 'Lucha y boxeo', color: '#C92A2A', on: false, name: /\bufc\b|boxeo|boxing|\bwwe\b|lucha|\bmma\b/, cat: /\bufc\b|box|\bwwe\b|lucha|\bmma\b/, now: /\bufc\b|boxeo|\bwwe\b|\bmma\b/ },
+  { key: 'docs', title: 'Documentales', color: '#1098AD', on: false, name: /docu|discovery|national geo|nat ?geo|history|historia|odisea|viajes|travel|ciencia|science/, cat: /docu/, now: null },
+  { key: 'music', title: 'Música', color: '#E64980', on: false, name: /musica|music|\bmtv\b|hits\b|\bvh1\b|concierto/, cat: /musica|music/, now: null },
 ];
 
-export function themeCategories() {
-  return cached('themeCats', () => {
-    const map = new Map();
-    for (const c of S.cats.live) {
-      const t = THEMES.find((x) => x[2].test(c.name));
-      if (!t) continue;
-      if (!map.has(t[0])) map.set(t[0], new Set());
-      map.get(t[0]).add(c.id);
+const escRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A list of your own: words (in the name or, with the guide, in what airs now) and categories. */
+function customDef(x) {
+  const words = (x.words || []).map((w) => fold(w).trim()).filter(Boolean);
+  const re = words.length ? new RegExp(words.map((w) => (/^\w/.test(w) ? '\\b' : '') + escRe(w)).join('|')) : null;
+  return { key: x.key, title: x.title, color: '#868E96', on: true, custom: true, words: x.words || [], cats: x.cats || [], name: re, cat: null, now: re, catSet: new Set(x.cats || []) };
+}
+export function listDefs() {
+  return [...LIST_PRESETS, ...(S.layout.custom || []).map(customDef)];
+}
+export const listDef = (key) => listDefs().find((d) => d.key === key) || null;
+
+function catNames() {
+  return cached('catNames', () => new Map(S.cats.live.map((c) => [c.id, fold(c.name)])));
+}
+/** Every channel of a list, in the order of your provider. */
+export function listMembers(def) {
+  const sig = def.custom ? JSON.stringify([def.words, def.cats]) : '';
+  return cached('list:' + def.key + sig, () => {
+    const cn = catNames();
+    return S.live.filter((c) => {
+      const cat = cn.get(c.cat) || '';
+      if (isAdultChannel(c, cat)) return false;
+      const n = fold(c.name);
+      return (def.name && def.name.test(n)) || (def.cat && def.cat.test(cat)) || (def.catSet && def.catSet.has(c.cat));
+    });
+  });
+}
+function memberIds(def) {
+  const sig = def.custom ? JSON.stringify([def.words, def.cats]) : '';
+  return cached('listIds:' + def.key + sig, () => new Set(listMembers(def).map((c) => c.id)));
+}
+
+// "DAZN LaLiga 2 FHD", "DAZN LaLiga 2 HD" and "DAZN LaLiga 2 (backup)" are one channel in a row.
+const qualityRe = /\b(fhd|uhd|4k|hd|sd|hq|lq|hevc|h\.?26[45]|1080[pi]?|720p?|50 ?fps|60 ?fps|backup|bk|alt|raw|vip|plus)\b|\(.*?\)|\[.*?\]/g;
+export const sameChannelKey = (name) => fold(name).replace(qualityRe, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** The channels of a list for its row: those airing a matching programme now first, then the rest; one per channel. */
+export function listRow(def, limit = 60) {
+  const sig = def.custom ? JSON.stringify([def.words, def.cats]) : '';
+  return cachedMinute('listRow:' + def.key + sig + ':' + limit, () => {
+    const out = [];
+    const seen = new Set();
+    const add = (c) => {
+      const k = sameChannelKey(c.name);
+      if (out.length >= limit || seen.has(k)) return;
+      seen.add(k);
+      out.push(c);
+    };
+    if (def.now) {
+      const cn = catNames();
+      programmesNow()
+        .filter((x) => def.now.test(fold(x.p.t)) && !replay.test(x.p.t) && !isAdultChannel(x.c, cn.get(x.c.cat)))
+        .sort((a, b) => sportScore(b.p.t) - sportScore(a.p.t))
+        .forEach((x) => add(x.c));
     }
-    return map;
+    for (const c of listMembers(def)) {
+      if (out.length >= limit) break;
+      add(c);
+    }
+    return out;
   });
 }
-export function liveThemes() {
-  return cached('themes', () => {
-    const cats = themeCategories();
-    return THEMES.map(([key, title, , colors]) => {
-      const set = cats.get(key);
-      const count = set ? S.live.filter((c) => set.has(c.cat)).length : 0;
-      return { key, title, colors, count };
-    }).filter((t) => t.count > 0);
+
+/** Your channels (the ones with the heart), in your order. */
+export function myChannels() {
+  return S.favorites.filter((f) => f.kind === 'live').map((f) => channelById(f.id)).filter(Boolean);
+}
+/** How well a list fits your channels: how many of them are in it. */
+export function listAffinity(def, mine = myChannels()) {
+  if (!mine.length) return 0;
+  const ids = memberIds(def);
+  let n = 0;
+  for (const c of mine) if (ids.has(c.id)) n++;
+  return n;
+}
+
+/** Channels like yours that you don't have yet: same categories and lists, airing now first. */
+export function suggestedChannels(limit = 30) {
+  const mine = myChannels();
+  if (!mine.length) return [];
+  return cachedMinute('suggest:' + limit + ':' + mine.map((c) => c.id).join(','), () => {
+    const have = new Set(mine.map((c) => sameChannelKey(c.name)));
+    const cn = catNames();
+    const weight = new Map();
+    for (const c of mine) weight.set(c.cat, (weight.get(c.cat) || 0) + 2);
+    const lists = LIST_PRESETS.map((d) => [d, listAffinity(d, mine)]).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const score = new Map();
+    const bump = (c, w) => {
+      if (have.has(sameChannelKey(c.name)) || isAdultChannel(c, cn.get(c.cat))) return;
+      score.set(c, (score.get(c) || 0) + w);
+    };
+    const idx = catIndex('live');
+    for (const [cat, w] of weight) for (const c of (idx.get(cat) || []).slice(0, 80)) bump(c, w);
+    for (const [d, n] of lists) for (const c of listRow(d, 40)) bump(c, n);
+    const airing = new Set(programmesNow().filter((x) => sportScore(x.p.t) >= 2).map((x) => x.c.id));
+    const out = [];
+    const seen = new Set();
+    [...score].sort((a, b) => (b[1] + (airing.has(b[0].id) ? 3 : 0)) - (a[1] + (airing.has(a[0].id) ? 3 : 0))).forEach(([c]) => {
+      const k = sameChannelKey(c.name);
+      if (out.length < limit && !seen.has(k)) {
+        seen.add(k);
+        out.push(c);
+      }
+    });
+    return out;
   });
 }
-export function channelsOfTheme(key) {
-  const set = themeCategories().get(key);
-  return set ? S.live.filter((c) => set.has(c.cat)) : [];
+
+// ------------------------------------------------------------------ rows of Inicio and En vivo (order and visibility)
+
+export const HOME_ROWS = [
+  ['mine', 'Mis canales'], ['continue', 'Seguir viendo'], ['recent', 'Últimos canales'], ['movies', 'Películas recomendadas'],
+  ['sports', 'Deportes y eventos en directo'], ['series', 'Series recomendadas'], ['news', 'Noticias en directo'], ['mylist', 'Mi lista'],
+];
+export const LIVE_ROWS = [['events', 'Más deportes y eventos ahora'], ['recent', 'Últimos canales'], ['suggest', 'Te puede gustar']];
+
+/**
+ * Rows of a screen in the order they are drawn, with hidden ones at their place:
+ * [{key, title, on, def?}]. En vivo puts the lists that fit your channels first until
+ * you order them yourself.
+ */
+export function rowsFor(screen) {
+  const base = screen === 'home'
+    ? HOME_ROWS.map(([key, title]) => ({ key, title, on: true }))
+    : [...LIVE_ROWS.map(([key, title]) => ({ key, title, on: true })), ...listDefs().map((def) => ({ key: 'list:' + def.key, title: def.title, on: def.on, def }))];
+  const saved = S.layout[screen];
+  if (!saved) {
+    if (screen === 'live') {
+      const mine = myChannels();
+      const fixed = base.filter((r) => !r.def);
+      const lists = base.filter((r) => r.def).map((r, i) => ({ r, i, a: listAffinity(r.def, mine) }));
+      lists.sort((x, y) => (y.r.on - x.r.on) || (y.a - x.a) || (x.i - y.i));
+      // A list you never switched on still comes up when most of your channels are in it.
+      return [...fixed, ...lists.map((x) => x.r)];
+    }
+    return base;
+  }
+  const byKey = new Map(base.map((r) => [r.key, r]));
+  const out = [];
+  for (const s of saved) {
+    const r = byKey.get(s.key);
+    if (!r) continue;
+    byKey.delete(s.key);
+    out.push({ ...r, on: !!s.on });
+  }
+  // New rows (a list made after ordering) go after the last visible one.
+  return [...out, ...byKey.values()];
+}
+export const isAutoOrder = (screen) => !S.layout[screen];
+
+export async function saveRows(screen, rows) {
+  S.layout = { ...S.layout, [screen]: rows.map((r) => ({ key: r.key, on: !!r.on })) };
+  await kvSet('layout', S.layout);
+  changed();
+}
+export async function resetRows(screen) {
+  S.layout = { ...S.layout, [screen]: null };
+  await kvSet('layout', S.layout);
+  changed();
+}
+export async function saveCustomList(x) {
+  const list = [...(S.layout.custom || [])];
+  const i = list.findIndex((y) => y.key === x.key);
+  if (i >= 0) list[i] = x;
+  else list.push(x);
+  S.layout = { ...S.layout, custom: list };
+  if (S.layout.live && i < 0) S.layout.live = [...S.layout.live, { key: 'list:' + x.key, on: true }];
+  await kvSet('layout', S.layout);
+  changed();
+}
+export async function deleteCustomList(key) {
+  S.layout = {
+    ...S.layout,
+    custom: (S.layout.custom || []).filter((y) => y.key !== key),
+    live: S.layout.live ? S.layout.live.filter((r) => r.key !== 'list:' + key) : null,
+  };
+  await kvSet('layout', S.layout);
+  changed();
+}
+/** Previews a list being written (not saved yet). */
+export function previewList(x) {
+  return listMembers(customDef({ ...x, key: '__preview' }));
 }
 
 // ------------------------------------------------------------------ lists
@@ -769,12 +966,24 @@ export async function toggleFavorite(kind, id, title, image) {
     S.favorites.splice(i, 1);
     added = false;
   } else {
-    S.favorites.unshift({ kind, id, title, image, at: Date.now() });
+    // Channels go to the end of Mis canales; movies and series to the front of Mi lista.
+    const f = { kind, id, title, image, at: Date.now() };
+    if (kind === 'live') S.favorites.push(f);
+    else S.favorites.unshift(f);
     added = true;
   }
   await kvSet('favorites', S.favorites);
   changed();
   return added;
+}
+
+/** Puts Mis canales in this order (ids of channels). */
+export async function setMyChannelOrder(ids) {
+  const live = new Map(S.favorites.filter((f) => f.kind === 'live').map((f) => [f.id, f]));
+  const ordered = ids.map((id) => live.get(id)).filter(Boolean);
+  S.favorites = [...ordered, ...S.favorites.filter((f) => f.kind !== 'live' || !ids.includes(f.id))];
+  await kvSet('favorites', S.favorites);
+  changed();
 }
 
 export async function markChannelWatched(id) {

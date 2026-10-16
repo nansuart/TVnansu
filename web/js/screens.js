@@ -6,6 +6,7 @@ import * as D from './data.js';
 import {
   posterCard, channelCard, eventCard, shelf, logoTile, progressBar, button, iconButton, segmented, icon,
   dots, livePreview, thumbTour, eventSubtitle, TINT, emptyState, loading, bindClick, coverImg, favButton, refreshCaptures, picture,
+  addCard, dialog, toggleSwitch, sortable,
 } from './ui.js';
 import { play } from './player.js';
 
@@ -222,7 +223,7 @@ function homeScreen(ctx) {
   const sports = events.filter((e) => e.label !== 'NOTICIAS');
   const news = events.filter((e) => e.label === 'NOTICIAS');
   const recent = D.recentChannels();
-  const favCh = S.favorites.filter((f) => f.kind === 'live').map((f) => D.channelById(f.id)).filter(Boolean);
+  const favCh = D.myChannels();
   const myList = S.favorites.filter((f) => f.kind !== 'live');
   const cont = D.continueWatching();
   D.loadCaptures([...recent, ...events.map((e) => e.channel), ...favCh].map((c) => c.id)).then((n) => {
@@ -272,8 +273,18 @@ function homeScreen(ctx) {
     scroller.append(h('div.bento', { dataset: { top: '' } }, featured.el, panel));
   }
 
-  if (cont.length) {
-    scroller.append(shelf('Seguir viendo', cont, (p) => {
+  // Rows below, in the order chosen in Organizar (hidden ones are skipped).
+  const rm = D.recommendedMovies().filter((m) => !inSlides.has('m' + m.id));
+  const rs = D.recommendedSeries().filter((x) => !inSlides.has('s' + x.id));
+  const ROWS = {
+    mine: () => {
+      const items = [...favCh, null];
+      return shelf('Mis canales', items, (c, i) => (c
+        ? chCard(favCh, c, i, { sub: D.nowNext(c)?.now?.t || '' })
+        : addCard(favCh.length ? 'Añadir canales' : 'Elige tus canales', favCh.length ? '' : 'Tus favoritos, siempre a mano', () => pickChannels(ctx))),
+      { live: true, key: 'mine', more: () => pickChannels(ctx), moreLabel: favCh.length ? 'Editar' : 'Añadir', moreIcon: favCh.length ? 'edit' : 'plus' });
+    },
+    continue: () => cont.length && shelf('Seguir viendo', cont, (p) => {
       const card = posterCard({
         title: p.title, image: p.image, key: p.uid,
         subtitle: p.kind === 'series' ? p.subtitle : fmt.minutesLeft(p.dur - p.pos),
@@ -290,17 +301,13 @@ function homeScreen(ctx) {
       });
       card.querySelector('.art').append(x);
       return card;
-    }));
-  }
-  if (recent.length) scroller.append(shelf('Últimos canales', recent, (c, i) => chCard(recent, c, i, { showAge: true }), { live: true, more: () => ctx.selectTab('live') }));
-  const rm = D.recommendedMovies().filter((m) => !inSlides.has('m' + m.id));
-  if (rm.length) scroller.append(shelf('Películas recomendadas', rm, (m) => movieCard(ctx, m), { more: () => ctx.selectTab('movies') }));
-  if (sports.length) scroller.append(shelf('Deportes y eventos en directo', sports, (ev, i) => eventCard(ev, { onClick: () => playChannels(sports.map((e) => e.channel), i) }), { live: true }));
-  const rs = D.recommendedSeries().filter((x) => !inSlides.has('s' + x.id));
-  if (rs.length) scroller.append(shelf('Series recomendadas', rs, (s) => seriesCard(ctx, s), { more: () => ctx.selectTab('series') }));
-  if (news.length) scroller.append(shelf('Noticias en directo', news, (ev, i) => eventCard(ev, { onClick: () => playChannels(news.map((e) => e.channel), i) }), { live: true }));
-  if (myList.length) {
-    scroller.append(shelf('Mi lista', myList, (f) => posterCard({
+    }),
+    recent: () => recent.length && shelf('Últimos canales', recent, (c, i) => chCard(recent, c, i, { showAge: true }), { live: true, more: () => ctx.selectTab('live') }),
+    movies: () => rm.length && shelf('Películas recomendadas', rm, (m) => movieCard(ctx, m), { more: () => ctx.selectTab('movies') }),
+    sports: () => sports.length && shelf('Deportes y eventos en directo', sports, (ev, i) => eventCard(ev, { onClick: () => playChannels(sports.map((e) => e.channel), i) }), { live: true }),
+    series: () => rs.length && shelf('Series recomendadas', rs, (x) => seriesCard(ctx, x), { more: () => ctx.selectTab('series') }),
+    news: () => news.length && shelf('Noticias en directo', news, (ev, i) => eventCard(ev, { onClick: () => playChannels(news.map((e) => e.channel), i) }), { live: true }),
+    mylist: () => myList.length && shelf('Mi lista', myList, (f) => posterCard({
       title: cleanTitle(f.title), image: f.image, key: f.kind + f.id,
       fav: { kind: f.kind, id: f.id, title: f.title, image: f.image },
       onClick: () => {
@@ -308,11 +315,16 @@ function homeScreen(ctx) {
         if (x) (f.kind === 'series' ? openSeries : openMovie)(ctx, x);
       },
       onLong: () => toggleFav(f.kind, f.id, f.title, f.image),
-    })));
+    })),
+  };
+  for (const r of D.rowsFor('home')) {
+    if (!r.on || !ROWS[r.key]) continue;
+    const el = ROWS[r.key]();
+    if (el) scroller.append(el);
   }
-  if (favCh.length) scroller.append(shelf('Canales favoritos', favCh, (c, i) => chCard(favCh, c, i), { live: true }));
+  scroller.append(organizeBar(ctx, 'home'));
   // A current picture for the channels of this page, taken one by one in the background.
-  const tourList = [...new Map([...recent.slice(0, 10), ...favCh.slice(0, 8), ...sports.map((e) => e.channel), ...news.map((e) => e.channel)]
+  const tourList = [...new Map([...favCh.slice(0, 10), ...recent.slice(0, 8), ...sports.map((e) => e.channel), ...news.map((e) => e.channel)]
     .map((c) => [c.id, c])).values()].slice(0, 12);
   if (tourList.length) ctx.cleanup(thumbTour(scroller, tourList));
   return scroller;
@@ -386,9 +398,33 @@ function liveScreen(ctx) {
   if (slides.length) {
     scroller.append(liveBand(ctx, slides, (ev) => playChannels(events.map((e) => e.channel), Math.max(0, events.indexOf(ev)))));
   }
-  if (more.length) scroller.append(shelf('Más deportes y eventos ahora', more, (ev, i) => eventCard(ev, { onClick: () => playChannels(more.map((e) => e.channel), i) }), { live: true }));
-  if (recent.length) scroller.append(shelf('Últimos canales', recent, (c, i) => chCard(recent, c, i, { showAge: true }), { live: true }));
-  scroller.append(channelSection(ctx, scroller));
+  const section = channelSection(ctx, scroller);
+  const capIds = [];
+  const ROWS = {
+    events: () => more.length && shelf('Más deportes y eventos ahora', more, (ev, i) => eventCard(ev, { onClick: () => playChannels(more.map((e) => e.channel), i) }), { live: true }),
+    recent: () => recent.length && shelf('Últimos canales', recent, (c, i) => chCard(recent, c, i, { showAge: true }), { live: true }),
+    suggest: () => {
+      const list = D.suggestedChannels();
+      if (!list.length) return null;
+      capIds.push(...list.slice(0, 16).map((c) => c.id));
+      return shelf('Te puede gustar', list, (c, i) => chCard(list, c, i, { sub: D.nowNext(c)?.now?.t || '' }), { key: 'suggest' });
+    },
+  };
+  for (const r of D.rowsFor('live')) {
+    if (!r.on) continue;
+    let el = null;
+    if (r.def) {
+      const list = D.listRow(r.def);
+      if (list.length) {
+        capIds.push(...list.slice(0, 16).map((c) => c.id));
+        el = shelf(r.def.title, list, (c, i) => chCard(list, c, i, { sub: D.nowNext(c)?.now?.t || '' }), { key: r.key, more: () => section._show(r.key) });
+      }
+    } else if (ROWS[r.key]) el = ROWS[r.key]();
+    if (el) scroller.append(el);
+  }
+  if (capIds.length) D.loadCaptures(capIds).then((n) => { if (n > 0 && scroller.isConnected) refreshCaptures(scroller); });
+  scroller.append(organizeBar(ctx, 'live'));
+  scroller.append(section);
   return scroller;
 }
 
@@ -403,10 +439,15 @@ function channelSection(ctx, scroller) {
   const catName = new Map(S.cats.live.map((c) => [c.id, c.name]));
   if (filter.startsWith('cat:') && !idx.has(filter.slice(4))) filter = 'all';
 
+  // Filters: everything, Mis canales, recents and the lists switched on in Organizar.
+  const lists = D.rowsFor('live').filter((r) => r.def && r.on);
+  if (filter.startsWith('theme:') || (filter.startsWith('list:') && !D.listDef(filter.slice(5)))) filter = 'all';
   const chipDefs = [
-    ['all', 'Todos', null], ['fav', 'Favoritos', null], ['recent', 'Recientes', null],
-    ...D.liveThemes().map((t) => ['theme:' + t.key, t.title, t.colors[0]]),
+    ['all', 'Todos', null], ['fav', 'Mis canales', null], ['recent', 'Recientes', null],
+    ...lists.map((r) => [r.key, r.title, r.def.color]),
   ];
+  const extra = filter.startsWith('list:') && !lists.some((r) => r.key === filter) ? D.listDef(filter.slice(5)) : null;
+  if (extra) chipDefs.push(['list:' + extra.key, extra.title, extra.color]);
   const chips = h('div.chips', { dataset: { group: 'chips' } });
   const chipEls = chipDefs.map(([key, label, color]) => {
     const b = h('button.chipbtn.f', { tabIndex: -1, type: 'button', dataset: { f: key } }, color ? h('i', { style: { background: color } }) : null, label);
@@ -433,9 +474,16 @@ function channelSection(ctx, scroller) {
     grid, sentinel);
 
   function listFor(key) {
-    if (key === 'fav') return S.favorites.filter((f) => f.kind === 'live').map((f) => D.channelById(f.id)).filter(Boolean);
+    if (key === 'fav') return D.myChannels();
     if (key === 'recent') return D.recentChannels();
-    if (key.startsWith('theme:')) return D.channelsOfTheme(key.slice(6));
+    if (key.startsWith('list:')) {
+      const def = D.listDef(key.slice(5));
+      if (!def) return [];
+      // Channels airing a match of the list now come first, then all the others.
+      const now = D.listRow(def, 60);
+      const ids = new Set(now.map((c) => c.id));
+      return [...now, ...D.listMembers(def).filter((c) => !ids.has(c.id))];
+    }
     if (key.startsWith('cat:')) return idx.get(key.slice(4)) || [];
     return S.live;
   }
@@ -463,7 +511,7 @@ function channelSection(ctx, scroller) {
     count.textContent = `${list.length.toLocaleString('es-ES')} ${list.length === 1 ? 'canal' : 'canales'}`;
     if (!list.length) {
       grid.append(h('div.chempty', null, filter === 'fav' && !q
-        ? 'Aún no tienes canales favoritos. Pulsa el corazón de un canal para añadirlo.'
+        ? 'Aún no tienes canales en Mis canales. Pulsa el corazón de un canal para añadirlo.'
         : filter === 'recent' && !q ? 'Aquí aparecerán los últimos canales que veas.' : 'Ningún canal coincide con el filtro.'));
     }
     more();
@@ -493,11 +541,282 @@ function channelSection(ctx, scroller) {
     return r;
   }
   draw();
+  /** "Ver todo" of a row: shows that list here. */
+  sec._show = (key) => {
+    if (!chipEls.some((b) => b.dataset.f === key)) {
+      const def = D.listDef(key.slice(5));
+      if (!def) return;
+      const b = h('button.chipbtn.f', { tabIndex: -1, type: 'button', dataset: { f: key } }, h('i', { style: { background: def.color } }), def.title);
+      b.addEventListener('click', () => setFilter(key));
+      chips.append(b);
+      chipEls.push(b);
+    }
+    filter = key;
+    q = '';
+    finput.value = '';
+    draw();
+    scroller.scrollTo({ top: scroller.scrollTop + sec.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 4, behavior: reduce() ? 'auto' : 'smooth' });
+    const on = chipEls.find((b) => b.dataset.f === key);
+    if (on) {
+      on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      if (document.body.classList.contains('kbd')) setTimeout(() => on.focus({ preventScroll: true }), 300);
+    }
+  };
   const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting) && count0 < list.length) more(); }, { root: scroller, rootMargin: '900px' });
   requestAnimationFrame(() => io.observe(sentinel));
   ctx.cleanup(() => io.disconnect());
   return sec;
 }
+
+// ------------------------------------------------------------------ Organizar, Mis canales, listas propias
+
+const ROW_NOTES = {
+  mine: 'Tus canales, con el + para añadir', continue: 'Películas y series a medias', recent: 'Lo último que viste en directo',
+  movies: 'Bien valoradas y recientes', sports: 'Partidos y eventos que se emiten ahora', series: 'Bien valoradas y recientes',
+  news: 'Informativos en emisión', mylist: 'Películas y series que guardaste',
+  events: 'Partidos y eventos que se emiten ahora', suggest: 'Parecidos a Mis canales',
+};
+
+/** Button at the end of the rows of Inicio and En vivo. */
+function organizeBar(ctx, screen) {
+  return h('div.orgbar', { dataset: { group: 'org' + screen } },
+    button(screen === 'home' ? 'Organizar Inicio' : 'Organizar listas', () => organizeRows(ctx, screen), { icon: 'rows', cls: 'ghost' }));
+}
+
+/**
+ * Order and visibility of the rows of a screen. Drag by the handle or use ▲ ▼; the
+ * switch shows or hides the row. In En vivo also: make a list of your own.
+ */
+function organizeRows(ctx, screen) {
+  const live = screen === 'live';
+  const body = h('div.org');
+  const intro = h('p.dim.t-caption');
+  const holder = h('div');
+  const foot = h('div.orgfoot', { dataset: { group: 'orgfoot' } });
+  body.append(intro, holder, foot);
+  let rows = [];
+  const save = () => D.saveRows(screen, rows);
+  function draw() {
+    rows = D.rowsFor(screen);
+    const mine = D.myChannels();
+    intro.textContent = live
+      ? (D.isAutoOrder('live')
+        ? 'Las listas que más encajan con Mis canales van primero. Si mueves alguna, se queda tu orden.'
+        : 'Arrastra por el asa o usa las flechas. El interruptor muestra u oculta cada fila.')
+      : 'Arrastra por el asa o usa las flechas. El interruptor muestra u oculta cada fila.';
+    const list = sortable(rows, (r) => {
+      const meta = [];
+      if (r.def) {
+        const n = D.listMembers(r.def).length;
+        meta.push(n ? `${n.toLocaleString('es-ES')} ${n === 1 ? 'canal' : 'canales'}` : r.def.now ? 'Los canales que lo emitan, según la guía' : 'Ningún canal de tu lista encaja');
+        const a = D.listAffinity(r.def, mine);
+        if (a) meta.push(`${a} de Mis canales`);
+        if (r.def.custom) meta.push('Lista tuya');
+      } else meta.push(ROW_NOTES[r.key] || '');
+      const main = h('div.tx', null,
+        h('div.a', null, r.def ? h('i.sw', { style: { background: r.def.color } }) : null, r.title),
+        h('div.b', null, meta.join('  ·  ')));
+      const extra = [];
+      if (r.def?.custom) {
+        const ed = h('button.mv.f', { type: 'button', tabIndex: -1, title: 'Editar la lista', 'aria-label': 'Editar la lista' }, icon('edit'));
+        ed.addEventListener('click', () => customListDialog(r.def, draw));
+        extra.push(ed);
+      }
+      const sw = toggleSwitch(r.on, (v) => {
+        r.on = v;
+        sw.closest('.srt')?.classList.toggle('hid', !v);
+        sw.title = v ? 'Ocultar fila' : 'Mostrar fila';
+        save();
+      }, r.on ? 'Ocultar fila' : 'Mostrar fila');
+      extra.push(sw);
+      return { main, extra };
+    }, (order) => {
+      rows = order;
+      save();
+      if (live) intro.textContent = 'Arrastra por el asa o usa las flechas. El interruptor muestra u oculta cada fila.';
+    });
+    rows.forEach((r, i) => list.children[i].classList.toggle('hid', !r.on));
+    holder.replaceChildren(list);
+  }
+  foot.append(...[
+    live ? button('Crear lista', () => customListDialog(null, draw), { icon: 'plus' }) : null,
+    button(live ? 'Orden automático' : 'Restablecer', async () => {
+      await D.resetRows(screen);
+      draw();
+      toast(live ? 'Orden automático según Mis canales' : 'Inicio como al principio');
+    }, { cls: 'ghost' }),
+  ].filter(Boolean));
+  draw();
+  dialog(live ? 'Organizar En vivo' : 'Organizar Inicio', body, { onClose: () => ctx.refresh(), sub: live ? 'Listas por temas y filas de la pantalla' : 'Filas de la pantalla de Inicio' });
+}
+
+/** Makes or edits a list of your own: name, words and categories of your provider. */
+function customListDialog(def, after) {
+  const words = h('input.f', { type: 'text', placeholder: 'Ej.: Real Madrid, boxeo, DAZN', autocomplete: 'off', spellcheck: false, value: def ? def.words.join(', ') : '' });
+  const name = h('input.f', { type: 'text', placeholder: 'Ej.: Mi equipo', autocomplete: 'off', value: def ? def.title : '' });
+  if (!def) name.dataset.default = '';
+  const picked = new Set(def ? def.cats : []);
+  const idx = D.catIndex('live');
+  const cats = S.cats.live.filter((c) => idx.has(c.id) && !D.isAdultChannel({ name: '' }, c.name));
+  const catFilter = h('input', { type: 'search', placeholder: 'Buscar categoría', autocomplete: 'off', spellcheck: false });
+  const catBox = h('div.catpick', { dataset: { group: 'catpick' } });
+  const count = h('div.t-caption.dim');
+  const current = () => ({
+    title: name.value.trim(),
+    words: words.value.split(',').map((w) => w.trim()).filter((w) => w.length > 1),
+    cats: [...picked],
+  });
+  const recount = debounce(() => {
+    const x = current();
+    const n = x.words.length || x.cats.length ? D.previewList(x).length : 0;
+    count.textContent = x.words.length || x.cats.length
+      ? `${n.toLocaleString('es-ES')} ${n === 1 ? 'canal encaja' : 'canales encajan'} ahora. Con la guía también entran los canales que emitan algo con esas palabras.`
+      : 'Escribe palabras o elige categorías.';
+  }, 200);
+  function drawCats() {
+    const k = D.fold(catFilter.value.trim());
+    const list = cats.filter((c) => !k || D.fold(c.name).includes(k)).slice(0, 120);
+    catBox.replaceChildren(...list.map((c) => {
+      const b = h('button.chipbtn.f' + (picked.has(c.id) ? '.on' : ''), { type: 'button', tabIndex: -1 }, c.name, h('span.n', null, String(idx.get(c.id).length)));
+      b.addEventListener('click', () => {
+        if (picked.has(c.id)) picked.delete(c.id);
+        else picked.add(c.id);
+        b.classList.toggle('on', picked.has(c.id));
+        recount();
+      });
+      return b;
+    }));
+    if (!list.length) catBox.append(h('div.t-caption.faint', null, 'Ninguna categoría con ese nombre.'));
+  }
+  catFilter.addEventListener('input', debounce(drawCats, 150));
+  words.addEventListener('input', recount);
+  const saveBtn = button('Guardar lista', async () => {
+    const x = current();
+    if (!x.title) { toast('Ponle un nombre'); name.focus(); return; }
+    if (!x.words.length && !x.cats.length) { toast('Añade alguna palabra o categoría'); words.focus(); return; }
+    await D.saveCustomList({ key: def ? def.key : 'u' + Date.now().toString(36), ...x });
+    dlg.close();
+    toast(def ? 'Lista guardada' : 'Lista creada');
+    after && after();
+  }, { primary: true });
+  delete saveBtn.dataset.default;
+  const delBtn = def ? button('Borrar lista', async () => {
+    if (!confirm(`¿Borrar la lista "${def.title}"?`)) return;
+    await D.deleteCustomList(def.key);
+    dlg.close();
+    toast('Lista borrada');
+    after && after();
+  }, { cls: 'ghost' }) : null;
+  const body = h('div.form',
+    null,
+    h('label.fld', null, h('span', null, 'Nombre'), name),
+    h('label.fld', null, h('span', null, 'Palabras (separadas por comas)'), words),
+    h('div.fld', null, h('span', null, 'Categorías de tu lista'), h('label.filterbox', null, icon('search'), catFilter), catBox),
+    count,
+    h('div.btnset', { dataset: { group: 'formbtns' } }, saveBtn, delBtn));
+  drawCats();
+  recount();
+  const dlg = dialog(def ? 'Editar lista' : 'Crear lista', body, { sub: 'Un canal entra si su nombre tiene alguna de las palabras o si está en una de las categorías.' });
+}
+
+/** Mis canales: search your list and add or remove channels; put yours in order. */
+function pickChannels(ctx) {
+  const q = h('input.f', { type: 'search', placeholder: 'Buscar canal por nombre o número', autocomplete: 'off', spellcheck: false, dataset: { default: '' } });
+  const results = h('div.pklist', { dataset: { group: 'pkres' } });
+  const resTitle = h('h4');
+  const mineBox = h('div');
+  const mineTitle = h('h4');
+  const catName = new Map(S.cats.live.map((c) => [c.id, c.name]));
+  const rowFor = (c) => {
+    const nn = D.nowNext(c);
+    const on = () => D.isFavorite('live', c.id);
+    const btn = h('span.pkbtn');
+    const r = h('div.pkrow.f', { tabIndex: -1, dataset: { key: 'p' + c.id }, title: c.name },
+      h('div.lg', null, logoTile(c.logo, c.name.slice(0, 2).toUpperCase())),
+      h('div.tx', null, h('div.n.clamp1', null, c.name), h('div.p.clamp1', null, nn?.now?.t || catName.get(c.cat) || '')),
+      btn);
+    const paint = () => {
+      r.classList.toggle('on', on());
+      btn.innerHTML = on() ? ICON_CHECK : ICON_PLUS;
+      r.setAttribute('aria-pressed', String(on()));
+    };
+    paint();
+    r._paint = paint;
+    r.addEventListener('click', async () => {
+      await D.toggleFavorite('live', c.id, c.name, c.logo);
+      paint();
+      drawMine();
+    });
+    return r;
+  };
+  function suggestionsList() {
+    const out = new Map();
+    for (const e of D.liveNow()) out.set(e.channel.id, e.channel);
+    for (const c of D.suggestedChannels(20)) out.set(c.id, c);
+    for (const c of D.recentChannels()) out.set(c.id, c);
+    for (const r of D.rowsFor('live').filter((x) => x.def && x.on)) for (const c of D.listRow(r.def, 6)) out.set(c.id, c);
+    return [...out.values()].slice(0, 60);
+  }
+  function drawResults() {
+    const k = D.fold(q.value.trim());
+    let list;
+    if (k) {
+      const words = k.split(/\s+/);
+      list = S.live.filter((c) => String(c.num) === k || words.every((w) => D.fold(c.name).includes(w))).slice(0, 120);
+      resTitle.textContent = list.length ? `Resultados (${list.length >= 120 ? 'los 120 primeros' : list.length})` : 'Ningún canal con ese nombre';
+    } else {
+      list = suggestionsList();
+      resTitle.textContent = 'Sugerencias';
+    }
+    results.replaceChildren(...list.map(rowFor));
+  }
+  function drawMine() {
+    const mine = D.myChannels();
+    mineTitle.textContent = `Mis canales (${mine.length})`;
+    if (!mine.length) {
+      mineBox.replaceChildren(h('div.t-caption.faint.pkempty', null, 'Busca a la izquierda y pulsa un canal para añadirlo. Aparecerán en Inicio en este orden.'));
+      return;
+    }
+    const srt = sortable(mine, (c) => {
+      const rm = h('button.mv.f', { type: 'button', tabIndex: -1, title: 'Quitar', 'aria-label': 'Quitar ' + c.name }, icon('close'));
+      rm.addEventListener('click', async () => {
+        await D.toggleFavorite('live', c.id, c.name, c.logo);
+        drawMine();
+        results.querySelectorAll('.pkrow').forEach((r) => r._paint && r._paint());
+      });
+      return {
+        main: h('div.mrow', null, h('div.lg', null, logoTile(c.logo, c.name.slice(0, 2).toUpperCase())), h('div.n.clamp1', null, c.name)),
+        extra: [rm],
+      };
+    }, (order) => D.setMyChannelOrder(order.map((c) => c.id)));
+    // ← from your channels goes back to the results.
+    srt._dir = (dir, from) => {
+      if (dir !== 'left' || window.innerWidth <= 760) return false;
+      const row = from.closest('.srt');
+      if (row && row.querySelector('.f') !== from) return false;
+      const t = (results._last && results._last.isConnected && results._last) || results.querySelector('.f');
+      if (t) focus(t);
+      return !!t;
+    };
+    mineBox.replaceChildren(srt);
+  }
+  // → from the results goes to your channels (two columns side by side).
+  results._dir = (dir) => {
+    if (dir !== 'right' || window.innerWidth <= 760) return false;
+    const t = mineBox.querySelector('.mv.f:not(.off)') || mineBox.querySelector('.f');
+    if (t) focus(t);
+    return !!t;
+  };
+  q.addEventListener('input', debounce(drawResults, 180));
+  const body = h('div.picker', null,
+    h('div.pkcol', null, h('label.filterbox.big', null, icon('search'), q), resTitle, results),
+    h('div.pkcol.mine', null, mineTitle, mineBox));
+  drawResults();
+  drawMine();
+  dialog('Mis canales', body, { wide: true, onClose: () => ctx.refresh(), sub: 'Los que elijas salen en Inicio, en este orden, y ayudan a ordenar las listas de En vivo.' });
+}
+const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
 
 // ------------------------------------------------------------------ Películas / Series
 
@@ -855,6 +1174,11 @@ function settingsScreen(ctx) {
     row('Tamaño de los subtítulos', 'XS es el tamaño de Apple TV.', segmented(['XS', 'S', 'M', 'L', 'XL'], D.prefs.subtitleSize, (i) => { D.prefs.subtitleSize = i; })),
     row('Estilo de los subtítulos', 'Sombra suave, o caja negra translúcida como en Apple TV.', segmented(['Sin fondo', 'Fondo'], D.prefs.subtitleBackground ? 1 : 0, (i) => { D.prefs.subtitleBackground = i === 1; })),
     h('h2', null, 'Interfaz'),
+    row('Filas de Inicio y En vivo', 'Elige qué filas y listas ves y en qué orden. También desde el botón Organizar al final de cada pantalla.',
+      h('div.btnset', { dataset: { group: 'orgbtns' } },
+        button('Inicio', () => organizeRows({ refresh: () => {} }, 'home'), { icon: 'rows' }),
+        button('En vivo', () => organizeRows({ refresh: () => {} }, 'live'), { icon: 'rows' }),
+        button('Mis canales', () => pickChannels({ refresh: () => {} }), { icon: 'heart' }))),
     row('Miniaturas en directo', 'Inicio va tomando, de uno en uno y en segundo plano, una imagen de lo que emite cada canal (cada 20 minutos). Se para mientras ves algo. Cada imagen gasta 1–2 MB de tu hosting.', yesNo('autoThumbs')),
     row('Vista previa en directo', 'Los destacados de Inicio y En vivo muestran el canal en movimiento y sin sonido. Usa una conexión de tu proveedor mientras se ve.', yesNo('livePreview')),
     row('Reducir animaciones', 'Quita el zoom lento y los fundidos. Útil en ordenadores poco potentes.', yesNo('reduceMotion', () => document.body.classList.toggle('reduce', D.prefs.reduceMotion))),

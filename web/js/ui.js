@@ -2,6 +2,7 @@
 import { h, fmt, cleanTitle } from './util.js';
 import { viaProxy, prefs, captureOf, saveCapture, liveUrl, isFavorite, toggleFavorite } from './data.js';
 import { toast } from './util.js';
+import { pushLayer, popLayer, onKey } from './nav.js';
 
 const svg = (body, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${body}</svg>`;
 export const ICONS = {
@@ -19,6 +20,12 @@ export const ICONS = {
   chevR: svg('<path d="m9.5 5 7 7-7 7"/>'),
   back: svg('<path d="M19 12H5M11 6l-6 6 6 6"/>'),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+  up: svg('<path d="m6 15 6-6 6 6"/>'),
+  down: svg('<path d="m6 9 6 6 6-6"/>'),
+  grip: svg('<circle cx="9" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.3" fill="currentColor" stroke="none"/>'),
+  edit: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  trash: svg('<path d="M4.5 7h15M10 11v6M14 11v6M6.5 7l1 13h9l1-13M9.5 7V4.5h5V7"/>'),
+  rows: svg('<rect x="3.5" y="4.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="10" width="17" height="4" rx="1.2"/><rect x="3.5" y="15.5" width="17" height="4" rx="1.2"/>'),
   back10: svg('<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 3.5V8H8"/><text x="12.2" y="15.3" font-size="7.2" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Inter,sans-serif">10</text>'),
   fwd10: svg('<path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 3.5V8H16"/><text x="11.8" y="15.3" font-size="7.2" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Inter,sans-serif">10</text>'),
   prev: svg('<path d="M18 5v14L8 12z" fill="currentColor"/><path d="M6 5v14"/>'),
@@ -238,7 +245,7 @@ export function posterCard({ title, image, subtitle, rating, progress, onClick, 
 }
 
 /** Live channel card (16:9): the last frame seen, or the logo. */
-export function channelCard(c, { onClick, onLong, showAge = false } = {}) {
+export function channelCard(c, { onClick, onLong, showAge = false, sub = '' } = {}) {
   const art = h('div.art');
   const fill = () => {
     const cap = captureOf(c.id);
@@ -251,7 +258,7 @@ export function channelCard(c, { onClick, onLong, showAge = false } = {}) {
     art._hasCap = !!cap;
   };
   fill();
-  const el = h('div.card.wide.f', { tabIndex: -1, dataset: { key: 'c' + c.id, ch: c.id }, title: c.name }, art, h('div.ttl.clamp1', null, c.name));
+  const el = h('div.card.wide.f', { tabIndex: -1, dataset: { key: 'c' + c.id, ch: c.id }, title: sub ? `${c.name} · ${sub}` : c.name }, art, h('div.ttl.clamp1', null, c.name), sub ? h('div.sub.clamp1', null, sub) : null);
   el._refill = () => { if (!art._hasCap && captureOf(c.id)) fill(); };
   bindClick(el, onClick, onLong);
   return el;
@@ -302,7 +309,7 @@ export function eventCard(ev, { onClick } = {}) {
  * only the first ones until the row is reached (by focus, hover or scrolling).
  * opts.more adds a "Ver todo" link next to the title.
  */
-export function shelf(title, items, render, { live = false, key, more } = {}) {
+export function shelf(title, items, render, { live = false, key, more, moreLabel = 'Ver todo', moreIcon = 'chevR' } = {}) {
   const row = h('div.row', { dataset: { group: key || title } });
   const first = 16;
   items.slice(0, first).forEach((it, i) => row.append(render(it, i)));
@@ -338,7 +345,7 @@ export function shelf(title, items, render, { live = false, key, more } = {}) {
   });
   const head = h('div.shelf-h', null, h('h3', null, live ? h('i.dot') : null, title));
   if (more) {
-    const m = h('button.more', { type: 'button', tabIndex: -1 }, 'Ver todo', icon('chevR', 'ic sm'));
+    const m = h('button.more', { type: 'button', tabIndex: -1 }, moreLabel, icon(moreIcon, 'ic sm'));
     m.addEventListener('click', more);
     head.append(m);
   }
@@ -653,3 +660,168 @@ export function attachStream(video, rawUrl, live, onEngines, onFatal, { direct =
 }
 
 export { cleanTitle };
+
+// ------------------------------------------------------------------ "+" card
+
+/** Empty card with a plus, to add things to a row (Mis canales). */
+export function addCard(label, sub, onClick) {
+  const el = h('div.card.wide.addcard.f', { tabIndex: -1, dataset: { key: 'add' }, title: label },
+    h('div.art', null, h('div.plus', null, icon('plus')), h('div.lbl', null, label)),
+    sub ? h('div.ttl.clamp1', null, sub) : null);
+  bindClick(el, onClick);
+  return el;
+}
+
+// ------------------------------------------------------------------ dialogs
+
+/**
+ * Window over the screen. Keys and focus stay inside until it closes (Esc, Atrás,
+ * the X or a click outside). Returns {el, body, close}.
+ */
+export function dialog(title, body, { onClose, wide = false, sub = '' } = {}) {
+  const opener = document.activeElement;
+  let closed = false;
+  const x = iconButton('close', () => close(), 'Cerrar', 'ghost');
+  const bodyEl = h('div.dlg-b', null, body);
+  const panel = h('div.dlg-p' + (wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+    h('div.dlg-h', null, h('div.tx', null, h('h2', null, title), sub ? h('div.sub', null, sub) : null), x),
+    bodyEl);
+  const el = h('div.dlg', null, panel);
+  el.addEventListener('pointerdown', (e) => { if (e.target === el) close(); });
+  (document.getElementById('app') || document.body).append(el);
+  pushLayer(panel);
+  const off = onKey((e) => {
+    if (closed) return false;
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+    if (!(e.key === 'Escape' || e.key === 'BrowserBack' || e.key === 'GoBack' || (e.key === 'Backspace' && !typing))) return false;
+    if (typing && e.key === 'Escape' && document.activeElement.value) {
+      document.activeElement.blur();
+      return true;
+    }
+    close();
+    return true;
+  });
+  function close() {
+    if (closed) return;
+    closed = true;
+    off();
+    popLayer(panel);
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 160);
+    if (opener && opener.isConnected) opener.focus({ preventScroll: true });
+    if (onClose) onClose();
+  }
+  requestAnimationFrame(() => {
+    el.classList.add('in');
+    const first = panel.querySelector('.dlg-b .f[data-default]') || panel.querySelector('.dlg-b .f');
+    if (first) first.focus({ preventScroll: true });
+  });
+  return { el, body: bodyEl, close };
+}
+
+/** On/off switch. */
+export function toggleSwitch(on, onChange, label) {
+  const b = h('button.switch.f' + (on ? '.on' : ''), { type: 'button', tabIndex: -1, role: 'switch', 'aria-checked': String(!!on), title: label, 'aria-label': label }, h('i'));
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const v = !b.classList.contains('on');
+    b.classList.toggle('on', v);
+    b.setAttribute('aria-checked', String(v));
+    onChange(v);
+  });
+  return b;
+}
+
+/**
+ * Vertical list that can be put in order: drag a row by its handle (mouse or finger),
+ * or move it with its ▲ ▼ buttons (keyboard and remote: focus ▲ and press OK).
+ * render(item) returns {main, extra}; onChange(items) gets the new order.
+ */
+export function sortable(items, render, onChange) {
+  const list = h('div.sortable', { dataset: { group: 'sort' + Math.random().toString(36).slice(2) } });
+  const commit = () => {
+    const rows = [...list.children];
+    edges();
+    onChange(rows.map((r) => r._item));
+  };
+  for (const it of items) {
+    const { main, extra = [] } = render(it);
+    const grip = h('span.grip', { title: 'Arrastra para mover', 'aria-hidden': 'true' }, icon('grip'));
+    const up = h('button.mv.f', { type: 'button', tabIndex: -1, title: 'Subir', 'aria-label': 'Subir' }, icon('up'));
+    const down = h('button.mv.f', { type: 'button', tabIndex: -1, title: 'Bajar', 'aria-label': 'Bajar' }, icon('down'));
+    const row = h('div.srt', null, grip, h('div.main', null, main), up, down, ...extra);
+    row._item = it;
+    row._up = up;
+    row._down = down;
+    // Move the neighbour, not the row: the focused button keeps its focus.
+    up.addEventListener('click', () => {
+      const prev = row.previousElementSibling;
+      if (!prev) return;
+      list.insertBefore(prev, row.nextElementSibling);
+      commit();
+      row.scrollIntoView({ block: 'nearest' });
+      flash(row);
+    });
+    down.addEventListener('click', () => {
+      const next = row.nextElementSibling;
+      if (!next) return;
+      list.insertBefore(next, row);
+      commit();
+      row.scrollIntoView({ block: 'nearest' });
+      flash(row);
+    });
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const box = list.closest('.dlg-b') || list.parentElement;
+      const startY = e.clientY;
+      const top0 = row.offsetTop;
+      const order0 = [...list.children];
+      row.classList.add('dragging');
+      // The neighbours move around the row (moving the row itself would drop the pointer).
+      const move = (ev) => {
+        const y = ev.clientY;
+        let sib = row.previousElementSibling;
+        while (sib && y < sib.getBoundingClientRect().top + sib.offsetHeight / 2) {
+          list.insertBefore(sib, row.nextElementSibling);
+          sib = row.previousElementSibling;
+        }
+        sib = row.nextElementSibling;
+        while (sib && y > sib.getBoundingClientRect().top + sib.offsetHeight / 2) {
+          list.insertBefore(sib, row);
+          sib = row.nextElementSibling;
+        }
+        row.style.transform = `translateY(${y - startY - (row.offsetTop - top0)}px)`;
+        const br = box.getBoundingClientRect();
+        if (y < br.top + 40) box.scrollTop -= 12;
+        else if (y > br.bottom - 40) box.scrollTop += 12;
+      };
+      const end = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', end);
+        window.removeEventListener('pointercancel', end);
+        row.style.transform = '';
+        row.classList.remove('dragging');
+        if ([...list.children].some((r, i) => r !== order0[i])) commit();
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', end);
+      window.addEventListener('pointercancel', end);
+    });
+    list.append(row);
+  }
+  // Dimmed, not disabled: a disabled button would lose the focus of the keyboard.
+  function edges() {
+    [...list.children].forEach((r, i, a) => {
+      r._up.classList.toggle('off', i === 0);
+      r._down.classList.toggle('off', i === a.length - 1);
+    });
+  }
+  edges();
+  return list;
+}
+function flash(row) {
+  row.classList.remove('moved');
+  void row.offsetWidth;
+  row.classList.add('moved');
+}
