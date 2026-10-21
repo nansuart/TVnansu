@@ -1,0 +1,426 @@
+{
+ "_ayuda": "Colecciones de Hispano IPTV. Añade estudios o directores copiando una línea y cambiando el nombre y el identificador de Wikidata (la Q y el número que aparece en wikidata.org). 'meses' limita una lista a esos meses (1 = enero). 'populares' deja solo películas conocidas.",
+ "listas": [
+  {
+   "id": "halloween",
+   "nombre": "Noche de Halloween",
+   "wikidata": "Q200092",
+   "propiedades": [
+    "P136"
+   ],
+   "meses": [
+    10
+   ],
+   "populares": true
+  },
+  {
+   "id": "navidad",
+   "nombre": "Películas de Navidad",
+   "wikidata": "Q28026639",
+   "propiedades": [
+    "P136"
+   ],
+   "meses": [
+    12
+   ]
+  },
+  {
+   "id": "oscar",
+   "nombre": "Ganadoras del Óscar a mejor película",
+   "wikidata": "Q102427",
+   "propiedades": [
+    "P166"
+   ]
+  },
+  {
+   "id": "superheroes",
+   "nombre": "Superhéroes",
+   "wikidata": "Q1535153",
+   "propiedades": [
+    "P136"
+   ],
+   "populares": true
+  }
+ ],
+ "estudios": [
+  {
+   "id": "ghibli",
+   "nombre": "Studio Ghibli",
+   "wikidata": "Q182950",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "a24",
+   "nombre": "A24",
+   "wikidata": "Q16248298",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "pixar",
+   "nombre": "Pixar",
+   "wikidata": "Q127552",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "disney-animation",
+   "nombre": "Walt Disney Animation",
+   "wikidata": "Q1047410",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "marvel",
+   "nombre": "Marvel Studios",
+   "wikidata": "Q367466",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "lucasfilm",
+   "nombre": "Lucasfilm",
+   "wikidata": "Q242446",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "dreamworks",
+   "nombre": "DreamWorks Animation",
+   "wikidata": "Q500088",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "blumhouse",
+   "nombre": "Blumhouse",
+   "wikidata": "Q16984664",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "laika",
+   "nombre": "Laika",
+   "wikidata": "Q1314323",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "aardman",
+   "nombre": "Aardman",
+   "wikidata": "Q301092",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "neon",
+   "nombre": "Neon",
+   "wikidata": "Q30603559",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "illumination",
+   "nombre": "Illumination",
+   "wikidata": "Q1189512",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "legendary",
+   "nombre": "Legendary",
+   "wikidata": "Q621364",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "searchlight",
+   "nombre": "Searchlight Pictures",
+   "wikidata": "Q953040",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "toho",
+   "nombre": "Toho",
+   "wikidata": "Q875920",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "sony-animation",
+   "nombre": "Sony Pictures Animation",
+   "wikidata": "Q1416835",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  },
+  {
+   "id": "amblin",
+   "nombre": "Amblin",
+   "wikidata": "Q457893",
+   "propiedades": [
+    "P272",
+    "P750"
+   ]
+  }
+ ],
+ "directores": [
+  {
+   "id": "nolan",
+   "nombre": "Christopher Nolan",
+   "wikidata": "Q25191",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "villeneuve",
+   "nombre": "Denis Villeneuve",
+   "wikidata": "Q548823",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "tarantino",
+   "nombre": "Quentin Tarantino",
+   "wikidata": "Q3772",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "scorsese",
+   "nombre": "Martin Scorsese",
+   "wikidata": "Q41148",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "spielberg",
+   "nombre": "Steven Spielberg",
+   "wikidata": "Q8877",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "miyazaki",
+   "nombre": "Hayao Miyazaki",
+   "wikidata": "Q55400",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "deltoro",
+   "nombre": "Guillermo del Toro",
+   "wikidata": "Q219124",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "cuaron",
+   "nombre": "Alfonso Cuarón",
+   "wikidata": "Q28028",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "inarritu",
+   "nombre": "Alejandro G. Iñárritu",
+   "wikidata": "Q55215",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "almodovar",
+   "nombre": "Pedro Almodóvar",
+   "wikidata": "Q55171",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "wes-anderson",
+   "nombre": "Wes Anderson",
+   "wikidata": "Q223687",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "fincher",
+   "nombre": "David Fincher",
+   "wikidata": "Q184903",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "ridley-scott",
+   "nombre": "Ridley Scott",
+   "wikidata": "Q56005",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "kubrick",
+   "nombre": "Stanley Kubrick",
+   "wikidata": "Q2001",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "burton",
+   "nombre": "Tim Burton",
+   "wikidata": "Q56008",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "gerwig",
+   "nombre": "Greta Gerwig",
+   "wikidata": "Q271967",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "bong",
+   "nombre": "Bong Joon-ho",
+   "wikidata": "Q495980",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "sofia-coppola",
+   "nombre": "Sofia Coppola",
+   "wikidata": "Q193628",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "coppola",
+   "nombre": "Francis Ford Coppola",
+   "wikidata": "Q56094",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "hitchcock",
+   "nombre": "Alfred Hitchcock",
+   "wikidata": "Q7374",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "cameron",
+   "nombre": "James Cameron",
+   "wikidata": "Q42574",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "jackson",
+   "nombre": "Peter Jackson",
+   "wikidata": "Q4465",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "amenabar",
+   "nombre": "Alejandro Amenábar",
+   "wikidata": "Q274070",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "bayona",
+   "nombre": "J. A. Bayona",
+   "wikidata": "Q932019",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "eastwood",
+   "nombre": "Clint Eastwood",
+   "wikidata": "Q43203",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "peele",
+   "nombre": "Jordan Peele",
+   "wikidata": "Q3371986",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "lanthimos",
+   "nombre": "Yorgos Lanthimos",
+   "wikidata": "Q975410",
+   "propiedades": [
+    "P57"
+   ]
+  },
+  {
+   "id": "pta",
+   "nombre": "Paul Thomas Anderson",
+   "wikidata": "Q25132",
+   "propiedades": [
+    "P57"
+   ]
+  }
+ ]
+}

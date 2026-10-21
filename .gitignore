@@ -1,0 +1,16 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+
+
+captures/
+.kotlin/
+
+# Hispano IPTV web: per-install data
+web/api/data/password.php
+web/api/data/logos/
+web/api/data/locks/

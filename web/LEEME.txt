@@ -1,0 +1,81 @@
+Hispano IPTV web — instalación en Hostinger
+==========================================
+
+Qué es
+------
+La versión web de Hispano IPTV, con el mismo diseño que la app de la tele: Inicio,
+En vivo, Películas, Series, Buscar y Ajustes. Funciona con tu cuenta Xtream
+(servidor, usuario y contraseña) o con una lista M3U. La web no incluye contenido.
+
+Lleva un pequeño intermediario en PHP (carpeta "api") que pide las listas, la
+guía y el vídeo a tu proveedor por ti. Hace falta porque los navegadores no
+dejan que una página web hable directamente con el servidor del proveedor.
+
+
+Instalar (5 minutos)
+--------------------
+1. Entra en hPanel de Hostinger → Sitios web → Administrar → Administrador de archivos.
+2. Abre la carpeta public_html.
+3. Sube el archivo hispano-iptv-web.zip (botón "Subir").
+4. Clic derecho sobre el .zip → "Extraer". Se crea la carpeta "tv".
+5. Abre en el navegador:  https://tudominio.com/tv/
+6. La primera vez te pedirá crear una contraseña. Solo con ella se podrá usar
+   la web (se guarda cifrada en tv/api/data/password.php).
+7. Añade tu lista (Xtream o M3U) y espera a que cargue.
+
+Requisitos: PHP 8.0 o superior con la extensión cURL (Hostinger la trae
+activada). Lo puedes comprobar en hPanel → Avanzado → Configuración de PHP.
+Usa siempre la dirección con https (el SSL de Hostinger es gratuito).
+
+Si olvidas la contraseña: borra el archivo tv/api/data/password.php y al
+volver a entrar te pedirá crear una nueva.
+
+
+Cómo se usa
+-----------
+- Con el ratón: menú arriba (Inicio, En vivo, Películas, Series, buscador y
+  ajustes). Pasa el ratón por una fila para ver las flechas, y por una
+  carátula para ver el botón + (Mi lista) o el corazón (canales favoritos).
+- En vivo: debajo de los destacados está la lista de todos los canales, con
+  filtros (Favoritos, Recientes, temas), categorías y buscador por nombre o
+  número.
+- Reproductor: mueve el ratón para ver los controles. Clic pausa, doble clic
+  pantalla completa, la rueda sube y baja el volumen. En directo tienes canal
+  anterior/siguiente y la lista de canales con buscador.
+- También con el teclado, como con el mando: flechas para moverte, Intro para
+  elegir, Esc para volver. En el reproductor: Espacio pausa, ◀ ▶ 10 segundos,
+  ▲ ▼ volumen (en directo cambian de canal), F pantalla completa, M silencio,
+  C subtítulos, L lista de canales y los números van a un canal.
+
+
+Ten en cuenta
+-------------
+- El vídeo pasa por tu hosting. Cada hora de directo en HD son unos 2–3 GB de
+  tráfico que cuentan en tu plan. Los planes compartidos de Hostinger tienen
+  límites de uso de CPU y procesos; para uso personal y puntual va bien, pero
+  no es un servidor de streaming.
+- Tu proveedor verá la conexión desde la IP del servidor de Hostinger, no desde
+  tu casa. Si tu cuenta solo permite una conexión, no veas la web y la tele a la
+  vez. Algunos proveedores bloquean las IP de servidores: si nada carga, es
+  probable que sea eso.
+- Formatos: el directo va en HLS (y si falla, en TS). Las películas y series
+  MKV se abren con el reproductor MKV de la web (beta), que deja elegir el
+  idioma del audio y los subtítulos del archivo, también en Safari 18 o más
+  reciente. En Ajustes → "Reproductor de películas y series" puedes elegir
+  Automático, Navegador, MKV (movi) o avbridge para comparar.
+- Los datos (lista, favoritos, progreso) se guardan en cada navegador. En otro
+  ordenador tendrás que añadir la lista de nuevo.
+
+
+Actualizar
+----------
+Sube el .zip nuevo y extráelo encima. La contraseña se conserva porque el
+archivo password.php no viene en el .zip.
+
+
+Licencias
+---------
+Tipografía Montserrat (SIL Open Font License, fonts/OFL.txt), hls.js y mpegts.js
+(Apache 2.0, lib/*.LICENSE.txt), movi-player (Apache 2.0, con partes de FFmpeg
+bajo LGPL; lib/movi/LICENSE.txt), avbridge (MIT, con libav.js bajo LGPL;
+lib/avbridge/).

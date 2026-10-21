@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hispano IPTV brand gradient: purple (bottom-left) to orange (top-right). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="45"
+        android:startColor="#FF880BEB"
+        android:centerColor="#FFC4497A"
+        android:endColor="#FFF47F13"
+        android:type="linear" />
+</shape>
