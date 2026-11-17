@@ -4,7 +4,7 @@
 import { h, fmt, toast, debounce } from './util.js';
 import { pushLayer, popLayer, onKey, focus } from './nav.js';
 import { attachStream, grab, logoTile, progressBar, Preview, ICONS, picture } from './ui.js';
-import { prefs, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo, viaProxy, failureOf } from './data.js';
+import { prefs, trackChoice, saveTrackChoice, markChannelWatched, saveProgress, S, liveUrl, nowNext, shortEpg, notifyChanged, directVodUrl, directMemo, viaProxy, failureOf } from './data.js';
 
 let active = null;
 
@@ -29,6 +29,22 @@ const LANGS = {
   jpn: 'Japonés', ja: 'Japonés', kor: 'Coreano', ko: 'Coreano', chi: 'Chino', zho: 'Chino', zh: 'Chino', rus: 'Ruso', ru: 'Ruso',
   cat: 'Catalán', ca: 'Catalán', lat: 'Español latino', ara: 'Árabe', ar: 'Árabe', und: '',
 };
+// Languages compared by family: "spa", "es" and "es-ES" are the same.
+const LANG2 = { spa: 'es', esp: 'es', eng: 'en', fre: 'fr', fra: 'fr', ger: 'de', deu: 'de', ita: 'it', por: 'pt', jpn: 'ja', kor: 'ko', chi: 'zh', zho: 'zh', rus: 'ru', cat: 'ca', ara: 'ar' };
+const langKey = (c) => {
+  const x = (c || '').toLowerCase().split(/[-_]/)[0];
+  return x === 'und' ? '' : LANG2[x] || x;
+};
+/** "es|Castellano": how a chosen track is remembered (language and name). */
+const trackValue = (t) => langKey(t.language) + '|' + (t.label || t.title || t.name || '').trim();
+/** The track of [list] that matches a remembered value: same name first, then same language. */
+function matchTrack(list, value) {
+  if (!value || value === 'off' || !list.length) return null;
+  const [lang, name] = [value.split('|')[0], value.split('|').slice(1).join('|')];
+  const named = name && list.find((t) => (t.label || t.title || t.name || '').trim() === name && (!lang || langKey(t.language || t.lang) === lang));
+  return named || (lang && list.find((t) => langKey(t.language || t.lang) === lang)) || null;
+}
+
 /** "Español · E-AC3 5.1" from what the file says about a track. */
 function trackLabel(t, i, word) {
   const lang = LANGS[(t.language || '').toLowerCase()] ?? (t.language || '');
@@ -259,6 +275,8 @@ function createPlayer(items, startIndex, startMs) {
         pendingDirectFail = null;
       }
       updateAudioBtn();
+      // Some players know their tracks only now (avbridge); others a bit later (trackschange).
+      setTimeout(applyTrackPrefs, 300);
     });
     el.addEventListener('volumechange', () => setIcon(muteBtn, video.muted || video.volume === 0 ? 'mute' : 'vol'));
     el.addEventListener('ended', () => {
@@ -448,25 +466,77 @@ function createPlayer(items, startIndex, startMs) {
       .movi-subtitle-line { background: none !important; }`}`;
   }
 
-  /** Puts back the languages chosen last time (audio and subtitles), if the file has them. */
+  // ---------------------------------------------------------------- remembered audio and subtitles
+  //
+  // What you pick in a film or a series is remembered for that title (all its
+  // episodes); a title with no choice yet starts with the defaults of Ajustes.
+
+  /** Films by themselves, episodes by their series. */
+  const memKey = (it) => (it.kind === 'movie' ? 'm:' + it.id : it.kind === 'episode' ? 's:' + (it.seriesId || it.id) : null);
+  /** 'a' audio or 's' subtitles: remembered value, the default of Ajustes, or null (as the file comes). */
+  function wantedTrack(type) {
+    const k = memKey(item());
+    if (!k) return null;
+    const mem = trackChoice(k, type);
+    if (mem) return mem;
+    if (type === 'a') return prefs.audioLang ? langKey(prefs.audioLang) + '|' : null;
+    const d = prefs.subLang || 'auto';
+    if (d === 'auto') return null;
+    return d === 'off' ? 'off' : langKey(d) + '|';
+  }
+  function remember(type, t) {
+    const k = memKey(item());
+    if (k) saveTrackChoice(k, type, t ? trackValue(t) : 'off');
+  }
+  let tracksApplied = false;
+  /** Sets the remembered (or default) audio and subtitles once the file's tracks are known. */
   function applyTrackPrefs() {
-    if (!isMoviEl(video) || !video.player) return;
-    const p = video.player;
-    const auds = p.getAudioTracks?.() || [];
-    if (moviAudio == null && prefs.audioLang) {
-      const a = auds.find((t) => (t.language || '').toLowerCase() === prefs.audioLang);
-      if (a && auds.length > 1) {
+    if (tracksApplied) return;
+    const wa = wantedTrack('a');
+    const ws = wantedTrack('s');
+    if (isMoviEl(video) && video.player) {
+      const p = video.player;
+      const auds = p.getAudioTracks?.() || [];
+      const subs = p.getSubtitleTracks?.() || [];
+      if (!auds.length && !subs.length) return;
+      tracksApplied = true;
+      const a = matchTrack(auds, wa);
+      if (a && auds.length > 1 && moviAudio == null) {
         p.selectAudioTrack(a.id);
         moviAudio = a.id;
       }
-    }
-    const subs = p.getSubtitleTracks?.() || [];
-    if (moviSub == null && prefs.subLang) {
-      const t = subs.find((x) => (x.language || '').toLowerCase() === prefs.subLang);
-      if (t) {
-        p.selectSubtitleTrack(t.id);
-        moviSub = t.id;
+      if (moviSub == null) {
+        const t = matchTrack(subs, ws);
+        if (t) {
+          p.selectSubtitleTrack(t.id);
+          moviSub = t.id;
+        } else if (ws === 'off') {
+          const r = p.selectSubtitleTrack?.(null);
+          if (r && r.catch) r.catch(() => {});
+        }
       }
+    } else if (isAbEl(video)) {
+      const auds = video.audioTracks || [];
+      const subs = video.subtitleTracks || [];
+      if (!auds.length && !subs.length) return;
+      tracksApplied = true;
+      const a = matchTrack(auds, wa);
+      if (a && auds.length > 1 && abAudio == null) {
+        const r = video.setAudioTrack(a.id);
+        if (r && r.catch) r.catch(() => {});
+        abAudio = a.id;
+      }
+      const t = abSub == null && matchTrack(subs, ws);
+      if (t) {
+        const r = video.setSubtitleTrack(t.id);
+        if (r && r.catch) r.catch(() => {});
+        abSub = t.id;
+      }
+    } else if (engines.hls && engines.hls.audioTracks && engines.hls.audioTracks.length > 1) {
+      tracksApplied = true;
+      const list = engines.hls.audioTracks.map((t, i) => ({ ...t, i, language: t.lang, label: t.name }));
+      const a = matchTrack(list, wa);
+      if (a) engines.hls.audioTrack = a.i;
     }
     updateAudioBtn();
   }
@@ -486,6 +556,7 @@ function createPlayer(items, startIndex, startMs) {
     const it = item();
     const url = it.kind === 'live' ? liveUrl(it.channel) : it.url;
     const token = ++loadToken;
+    if (!isRetry) tracksApplied = false;
     // MKV/AVI (or the player chosen in Ajustes): the web's own players.
     const eng = engineFor(it);
     currentEngine = eng;
@@ -512,7 +583,7 @@ function createPlayer(items, startIndex, startMs) {
       if (it.kind !== 'live') markSeek();
       engines = attachStream(video, url, it.kind === 'live', null, onFatal);
     }
-    if (engines.hls && window.Hls) engines.hls.on(window.Hls.Events.AUDIO_TRACKS_UPDATED, updateAudioBtn);
+    if (engines.hls && window.Hls) engines.hls.on(window.Hls.Events.AUDIO_TRACKS_UPDATED, () => { updateAudioBtn(); applyTrackPrefs(); });
     if (seekMs > 0) {
       const once = () => {
         markSeek();
@@ -910,7 +981,7 @@ function createPlayer(items, startIndex, startMs) {
           const pr = video.setAudioTrack(t.id);
           if (pr && pr.catch) pr.catch(() => {});
           abAudio = t.id;
-          if (t.language) prefs.audioLang = t.language.toLowerCase();
+          remember('a', t);
         },
       }));
     }
@@ -928,13 +999,13 @@ function createPlayer(items, startIndex, startMs) {
         pick: () => {
           p.selectAudioTrack(t.id);
           moviAudio = t.id;
-          if (t.language) prefs.audioLang = t.language.toLowerCase();
+          remember('a', t);
         },
       }));
     }
     const hls = engines.hls;
     if (hls && hls.audioTracks && hls.audioTracks.length) {
-      return hls.audioTracks.map((t, i) => ({ label: t.name || t.lang || `Pista ${i + 1}`, on: hls.audioTrack === i, pick: () => { hls.audioTrack = i; } }));
+      return hls.audioTracks.map((t, i) => ({ label: t.name || t.lang || `Pista ${i + 1}`, on: hls.audioTrack === i, pick: () => { hls.audioTrack = i; remember('a', { language: t.lang, label: t.name }); } }));
     }
     const native = video.audioTracks;
     if (native && native.length) {
@@ -954,13 +1025,13 @@ function createPlayer(items, startIndex, startMs) {
     content.append(panelOpt('Desactivados', moviSub == null, async () => {
       await p.selectSubtitleTrack(null);
       moviSub = null;
-      prefs.subLang = '';
+      remember('s', null);
       openSubs();
     }));
     subs.forEach((t, i) => content.append(panelOpt(trackLabel(t, i, 'Subtítulos'), t.id === moviSub, async () => {
       await p.selectSubtitleTrack(t.id);
       moviSub = t.id;
-      if (t.language) prefs.subLang = t.language.toLowerCase();
+      remember('s', t);
       openSubs();
     })));
     if (!subs.length) content.append(h('div.dim.note', null, 'Este archivo no trae subtítulos.'));
@@ -975,11 +1046,13 @@ function createPlayer(items, startIndex, startMs) {
     content.append(panelOpt('Desactivados', abSub == null, async () => {
       try { await video.setSubtitleTrack(null); } catch { /* empty */ }
       abSub = null;
+      remember('s', null);
       openSubs();
     }));
     subs.forEach((t, i) => content.append(panelOpt(trackLabel(t, i, 'Subtítulos'), t.id === abSub, async () => {
       try { await video.setSubtitleTrack(t.id); } catch { /* empty */ }
       abSub = t.id;
+      remember('s', t);
       openSubs();
     })));
     if (!subs.length) content.append(h('div.dim.note', null, 'avbridge no encuentra subtítulos en este archivo.'));

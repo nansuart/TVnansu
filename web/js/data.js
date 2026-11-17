@@ -58,8 +58,9 @@ const PREF_DEFAULTS = {
   muted: false,
   autoThumbs: true,
   mkvPlayer: true,
-  audioLang: '',
-  subLang: '',
+  audioLang: '', // default audio of films and series: '' as the file comes, 'es', 'en'…
+  subLang: 'auto', // default subtitles: 'auto' as the file says, 'off', 'es', 'en'…
+  tracks: {}, // audio and subtitles chosen per film or series: {key: {a, s}}
 };
 export const prefs = (() => {
   let saved = {};
@@ -73,6 +74,13 @@ export const prefs = (() => {
     },
   });
 })();
+
+// Before, the last language picked became the default; now Ajustes sets it.
+{
+  const two = { spa: 'es', esp: 'es', es: 'es', eng: 'en', en: 'en' };
+  if (prefs.audioLang && !['es', 'en'].includes(prefs.audioLang)) prefs.audioLang = two[prefs.audioLang] || '';
+  if (!['auto', 'off', 'es', 'en'].includes(prefs.subLang)) prefs.subLang = two[prefs.subLang] || 'auto';
+}
 
 // ------------------------------------------------------------------ site access
 
@@ -1135,6 +1143,17 @@ export async function toggleFavorite(kind, id, title, image) {
   await kvSet('favorites', S.favorites);
   changed();
   return added;
+}
+
+/** Audio ('a') or subtitles ('s') chosen for a film or a series, as "es|Castellano" or "off". */
+export const trackChoice = (key, type) => (prefs.tracks || {})[key]?.[type] || null;
+export function saveTrackChoice(key, type, value) {
+  const all = { ...(prefs.tracks || {}) };
+  all[key] = { ...(all[key] || {}), [type]: value, at: Date.now() };
+  // Keep the last 400 titles.
+  const keys = Object.keys(all);
+  if (keys.length > 400) keys.sort((a, b) => (all[a].at || 0) - (all[b].at || 0)).slice(0, keys.length - 400).forEach((k) => delete all[k]);
+  prefs.tracks = all;
 }
 
 /** Puts Mis canales in this order (ids of channels). */

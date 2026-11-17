@@ -434,6 +434,7 @@ function channelSection(ctx, scroller) {
   try { saved = JSON.parse(sessionStorage.getItem('nt:livefilter') || 'null'); } catch { /* empty */ }
   let filter = saved?.f || 'all';
   let q = saved?.q || '';
+  let view = saved?.v || 'guide'; // 'guide' (programme grid) or 'list'
   const idx = D.catIndex('live');
   const cats = S.cats.live.filter((c) => idx.has(c.id));
   const catName = new Map(S.cats.live.map((c) => [c.id, c.name]));
@@ -468,7 +469,15 @@ function channelSection(ctx, scroller) {
   const count = h('span.count');
   const grid = h('div.chgrid', { dataset: { group: 'chgrid' } });
   const sentinel = h('div.sentinel');
-  const head = h('div.chsec-h', null, h('h2', null, 'Canales'), count);
+  const viewSw = h('div.viewsw', { dataset: { group: 'viewsw' } }, ...[['guide', 'Guía'], ['list', 'Lista']].map(([v, l]) => {
+    const b = h('button.f', { tabIndex: -1, type: 'button', dataset: { v } }, l);
+    b.addEventListener('click', () => {
+      view = v;
+      draw();
+    });
+    return b;
+  }));
+  const head = h('div.chsec-h', null, h('h2', null, 'Canales'), count, viewSw);
   const sec = h('section.chsec', null, head,
     h('div.chtools', null, chips, h('div.toolsr', null, select, h('label.filterbox', null, icon('search'), finput))),
     grid, sentinel);
@@ -496,7 +505,8 @@ function channelSection(ctx, scroller) {
   }
   let list = [], count0 = 0;
   function draw() {
-    try { sessionStorage.setItem('nt:livefilter', JSON.stringify({ f: filter, q })); } catch { /* empty */ }
+    try { sessionStorage.setItem('nt:livefilter', JSON.stringify({ f: filter, q, v: view })); } catch { /* empty */ }
+    [...viewSw.children].forEach((b) => b.classList.toggle('on', b.dataset.v === view));
     chipEls.forEach((b) => b.classList.toggle('on', b.dataset.f === filter));
     select.value = filter.startsWith('cat:') ? filter.slice(4) : '';
     select.classList.toggle('on', filter.startsWith('cat:'));
@@ -508,6 +518,8 @@ function channelSection(ctx, scroller) {
     list = base;
     count0 = 0;
     grid.replaceChildren();
+    grid.className = view === 'guide' ? 'chguide' : 'chgrid';
+    if (view === 'guide' && base.length) grid.append(buildGuide());
     count.textContent = `${list.length.toLocaleString('es-ES')} ${list.length === 1 ? 'canal' : 'canales'}`;
     if (!list.length) {
       grid.append(h('div.chempty', null, filter === 'fav' && !q
@@ -517,11 +529,156 @@ function channelSection(ctx, scroller) {
     more();
   }
   function more() {
-    const end = Math.min(list.length, count0 + 60);
+    const end = Math.min(list.length, count0 + (view === 'guide' ? 40 : 60));
     const frag = document.createDocumentFragment();
-    for (; count0 < end; count0++) frag.append(chRow(list, count0));
-    grid.append(frag);
+    for (; count0 < end; count0++) frag.append(view === 'guide' ? guideRow(list, count0) : chRow(list, count0));
+    (view === 'guide' && gBody ? gBody : grid).append(frag);
+    if (view === 'guide' && gShift) setShift(gShift, true);
   }
+
+  // ---------------------------------------------------------------- programme guide
+  //
+  // Like a TV guide: channels down the left, the hours across the top and each
+  // programme as a block as long as it lasts, with a line at the current time.
+  // The hours move with the arrows of the guide, a sideways swipe of the trackpad,
+  // or by going right through the programmes with the keyboard.
+  const H_MIN = 14 * 60; // hours of guide from now
+  const spanMin = () => (window.innerWidth >= 1700 ? 240 : window.innerWidth >= 1200 ? 180 : window.innerWidth >= 760 ? 120 : 75);
+  let gEl = null, gBody = null, gNowLine = null, gInfo = null, gBase = 0, gShift = 0, gPpm = 4, gPadT = null;
+  const half = (ms) => ms - (ms % 1800000);
+  function buildGuide() {
+    gBase = half(Date.now());
+    gShift = 0;
+    const times = h('div.gtrack');
+    for (let m = 0; m <= H_MIN; m += 30) times.append(h('span.gt', { style: { left: `calc(var(--ppm) * ${m}px)` } }, fmt.clock(gBase + m * 60000)));
+    gInfo = h('div.ginfo', null, h('div.gi-t', null, 'Guía de programación'), h('div.gi-s', null, 'Clic en un programa para ver el canal. Con el corazón lo añades a Mis canales.'));
+    const nav = h('div.gnav', { dataset: { group: 'gnav' } },
+      iconButton('chevL', () => setShift(gShift - 60), 'Antes', 'ghost'),
+      button('Ahora', () => setShift(0), { cls: 'ghost' }),
+      iconButton('chevR', () => setShift(gShift + 60), 'Más tarde', 'ghost'));
+    gBody = h('div.gbody', { dataset: { group: 'gbody' } });
+    gNowLine = h('div.gnow');
+    gEl = h('div.guide', null, gInfo, h('div.gruler', null, h('div.gday', null, 'Hoy', nav), h('div.gline', null, times)), gBody, gNowLine);
+    // Sideways swipe on a trackpad (or Shift + wheel) moves the hours.
+    let acc = 0, accT = null;
+    gEl.addEventListener('wheel', (e) => {
+      const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+      if (!dx) return;
+      e.preventDefault();
+      acc += dx / gPpm;
+      gEl.classList.add('dragging');
+      setShift(gShift + acc, true);
+      acc = 0;
+      clearTimeout(accT);
+      accT = setTimeout(() => gEl && gEl.classList.remove('dragging'), 150);
+    }, { passive: false });
+    requestAnimationFrame(measure);
+    return gEl;
+  }
+  function measure() {
+    if (!gEl || !gEl.isConnected) return;
+    const line = gEl.querySelector('.gruler .gline');
+    const w = line ? line.clientWidth : 600;
+    gPpm = Math.max(1.5, w / spanMin());
+    gEl.style.setProperty('--ppm', gPpm.toFixed(3));
+    setShift(gShift);
+  }
+  function setShift(min, free = false) {
+    if (!gEl) return;
+    const max = H_MIN - spanMin();
+    gShift = Math.max(0, Math.min(max, free ? min : Math.round(min / 30) * 30));
+    gEl.style.setProperty('--shift', gShift.toFixed(2));
+    placeNow();
+    // A programme that started before the left edge keeps its title in view.
+    clearTimeout(gPadT);
+    gPadT = setTimeout(() => {
+      if (!gEl) return;
+      for (const b of gEl.querySelectorAll('.gprog[data-x]')) {
+        const x = +b.dataset.x, w = +b.dataset.w;
+        const cut = gShift > x && gShift < x + w - 8 ? (gShift - x) * gPpm : 0;
+        b.style.paddingLeft = cut ? `${cut + 12}px` : '';
+      }
+    }, free ? 0 : 160);
+  }
+  function placeNow() {
+    if (!gEl || !gNowLine) return;
+    const line = gEl.querySelector('.gruler .gline');
+    if (!line) return;
+    const x = ((Date.now() - gBase) / 60000 - gShift) * gPpm;
+    const vis = x >= 0 && x <= line.clientWidth;
+    gNowLine.style.display = vis ? '' : 'none';
+    gNowLine.style.left = (line.offsetLeft + x) + 'px';
+    if (gBody) gNowLine.style.top = gBody.offsetTop + 'px';
+  }
+  function info(c, p) {
+    if (!gInfo) return;
+    const now = Date.now();
+    const airing = p && p.s <= now && p.e > now;
+    gInfo.replaceChildren(
+      h('div.gi-c', null, c.num ? h('b', null, String(c.num)) : null, c.name),
+      h('div.gi-t.clamp1', null, p ? p.t : 'Sin información de programación'),
+      p ? h('div.gi-m', null, airing ? h('span.live', null, h('i.dot'), 'AHORA') : null,
+        `${fmt.clock(p.s)} – ${fmt.clock(p.e)}` + (airing ? ` · ${fmt.minutesLeft(p.e - now)}` : '')) : null,
+      p?.d ? h('div.gi-s.clamp2', null, p.d) : null);
+  }
+  function guideRow(l, i) {
+    const c = l[i];
+    const now = Date.now();
+    const end = gBase + H_MIN * 60000;
+    const progs = ((c.epg && S.epg.get(c.epg)) || []).filter((p) => p.e > gBase && p.s < end);
+    const fav = favButton('live', c.id, c.name, c.logo, { heart: true, cls: 'fav' });
+    const cell = h('div.gch.f', { tabIndex: -1, title: c.name, dataset: { key: 'gc' + c.id } },
+      h('span.num', null, c.num ? String(c.num) : ''),
+      h('div.lg', null, logoTile(c.logo, c.name.slice(0, 2).toUpperCase())),
+      h('div.n.clamp2', null, c.name),
+      fav);
+    bindClick(cell, () => playChannels(l, i), async () => { await toggleFav('live', c.id, c.name, c.logo); fav._draw(); });
+    const cur = progs.find((p) => p.s <= now && p.e > now) || null;
+    cell.addEventListener('focus', () => { info(c, cur); if (i > count0 - 10) more(); });
+    cell.addEventListener('mouseenter', () => info(c, cur));
+    const line = h('div.gline');
+    // Focus would scroll the clipped line by itself; the guide moves only with --shift.
+    line.addEventListener('scroll', () => { line.scrollLeft = 0; });
+    if (!progs.length) {
+      const b = h('div.gprog.none.f', { tabIndex: -1 }, h('b', null, 'Sin guía de programación'));
+      bindClick(b, () => playChannels(l, i));
+      b.addEventListener('focus', () => info(c, null));
+      line.append(b);
+    } else {
+      const track = h('div.gtrack');
+      for (const p of progs) {
+        const x = (Math.max(p.s, gBase) - gBase) / 60000;
+        const w = (p.e - Math.max(p.s, gBase)) / 60000;
+        const airing = p.s <= now && p.e > now;
+        const b = h('div.gprog.f' + (airing ? '.now' : ''), {
+          tabIndex: -1,
+          dataset: { x: x.toFixed(2), w: w.toFixed(2) },
+          title: `${p.t}\n${fmt.clock(p.s)} – ${fmt.clock(p.e)}`,
+          style: { left: `calc(var(--ppm) * ${x}px)`, width: `calc(var(--ppm) * ${w}px - 4px)` },
+        },
+        h('b.clamp1', null, p.t),
+        h('span.clamp1', null, `${fmt.clock(p.s)} – ${fmt.clock(p.e)}`),
+        airing ? h('i.bar', { style: { width: `${Math.round(((now - p.s) / (p.e - p.s)) * 100)}%` } }) : null);
+        bindClick(b, () => playChannels(l, i), async () => { await toggleFav('live', c.id, c.name, c.logo); fav._draw(); });
+        b.addEventListener('mouseenter', () => info(c, p));
+        b.addEventListener('focus', () => {
+          info(c, p);
+          // Keyboard: bring the programme into view.
+          const span = spanMin();
+          if (x >= gShift + span - 20) setShift(Math.floor(x / 30) * 30 - 30);
+          else if (x < gShift) setShift(Math.floor(x / 30) * 30);
+          if (i > count0 - 10) more();
+        });
+        track.append(b);
+      }
+      line.append(track);
+    }
+    return h('div.gprow', { dataset: { key: 'g' + c.id } }, cell, line);
+  }
+  const nowTimer = setInterval(placeNow, 30000);
+  const onResize = debounce(measure, 150);
+  window.addEventListener('resize', onResize);
+  ctx.cleanup(() => { clearInterval(nowTimer); window.removeEventListener('resize', onResize); });
   function chRow(l, i) {
     const c = l[i];
     const nn = D.nowNext(c);
@@ -1200,6 +1357,10 @@ function settingsScreen(ctx) {
     row('Logos de los canales', 'nansu tv: logos limpios de una colección abierta (tv-logos) cuando encuentra el canal; tu hosting guarda cada uno la primera vez. Si no lo encuentra, usa el del proveedor.',
       segmented(['nansu tv', 'Proveedor'], D.prefs.logos === 'provider' ? 1 : 0, (i) => { D.setLogoSource(i ? 'provider' : 'nansu'); })),
     row('Mosca de nansu tv', 'Marca de agua al 30 % en la esquina inferior izquierda. Solo en canales en vivo.', yesNo('watermark')),
+    row('Audio de películas y series', 'El idioma con el que empiezan si no elegiste otro en ese título. Lo que elijas al ver algo se recuerda para esa película o esa serie.',
+      segmented(['Original', 'Español', 'Inglés'], Math.max(0, ['', 'es', 'en'].indexOf(D.prefs.audioLang || '')), (i) => { D.prefs.audioLang = ['', 'es', 'en'][i]; })),
+    row('Subtítulos de películas y series', 'Automático usa los que marque el archivo. Con audio en inglés y subtítulos en español tienes la versión original subtitulada.',
+      segmented(['Automático', 'No', 'Español', 'Inglés'], Math.max(0, ['auto', 'off', 'es', 'en'].indexOf(D.prefs.subLang || 'auto')), (i) => { D.prefs.subLang = ['auto', 'off', 'es', 'en'][i]; })),
     row('Tamaño de los subtítulos', 'XS es el tamaño de Apple TV.', segmented(['XS', 'S', 'M', 'L', 'XL'], D.prefs.subtitleSize, (i) => { D.prefs.subtitleSize = i; })),
     row('Estilo de los subtítulos', 'Sombra suave, o caja negra translúcida como en Apple TV.', segmented(['Sin fondo', 'Fondo'], D.prefs.subtitleBackground ? 1 : 0, (i) => { D.prefs.subtitleBackground = i === 1; })),
     h('h2', null, 'Interfaz'),
