@@ -145,6 +145,7 @@ class PlayerController(
 
             override fun onTracksChanged(t: Tracks) {
                 tracks = t
+                applyRememberedNames(t)
             }
         })
 
@@ -182,6 +183,7 @@ class PlayerController(
         position = 0
         duration = 0
         val it = item
+        applyTrackPrefs()
         if (seekMs > 0 && !isLive) player.setMediaItem(mediaItem(it.url), seekMs)
         else player.setMediaItem(mediaItem(it.url))
         player.prepare()
@@ -341,6 +343,103 @@ class PlayerController(
             builder.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, option.trackIndex))
         }
         player.trackSelectionParameters = builder.build()
+        // Remembered for this film or series: the next episode and the next visit start with it.
+        val key = memoryKey() ?: return
+        val value = if (g == null) "off" else trackValue(g.getTrackFormat(option.trackIndex))
+        repo.prefs.saveTrackChoice(key, if (type == C.TRACK_TYPE_AUDIO) 'a' else 't', value)
+    }
+
+    // ------------------------------------------------------------------ remembered audio and subtitles
+
+    /** Films by themselves, episodes by their series: one choice for the whole series. */
+    private fun memoryKey(): String? = when (item.kind) {
+        Kind.MOVIE -> "m:${item.remoteId}"
+        Kind.EPISODE -> "s:${item.seriesId ?: item.remoteId}"
+        else -> null
+    }
+
+    private fun langOf(f: Format): String = f.language?.takeIf { it.isNotBlank() && it != "und" } ?: ""
+
+    private fun trackValue(f: Format): String = langOf(f) + "|" + (f.label ?: "")
+
+    /** Track names still to match once the tracks are known: (audio, subtitles). */
+    private var pendingNames: Pair<String?, String?> = null to null
+
+    /**
+     * Before opening a film or an episode: the audio and subtitles chosen for that
+     * title, or the defaults of Ajustes. Languages go to the player as preferences;
+     * the exact track (two Spanish audios, tracks without language) is set when the
+     * tracks are known, in [applyRememberedNames].
+     */
+    private fun applyTrackPrefs() {
+        val b = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredAudioLanguages()
+            .setPreferredTextLanguages()
+        pendingNames = null to null
+        val key = memoryKey()
+        if (key == null) {
+            player.trackSelectionParameters = b.build()
+            return
+        }
+        val prefs = repo.prefs
+        val audio = prefs.trackChoice(key, 'a')
+        val text = prefs.trackChoice(key, 't')
+        when {
+            audio != null -> {
+                val lang = audio.substringBefore('|')
+                if (lang.isNotEmpty()) b.setPreferredAudioLanguage(lang)
+                pendingNames = audio to pendingNames.second
+            }
+            prefs.defaultAudioLang.isNotEmpty() -> b.setPreferredAudioLanguage(prefs.defaultAudioLang)
+        }
+        val textChoice = text ?: prefs.defaultTextLang
+        when {
+            textChoice == "off" -> b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            textChoice == "auto" -> Unit
+            text != null -> {
+                val lang = text.substringBefore('|')
+                if (lang.isNotEmpty()) b.setPreferredTextLanguage(lang)
+                pendingNames = pendingNames.first to text
+            }
+            else -> b.setPreferredTextLanguage(textChoice)
+        }
+        player.trackSelectionParameters = b.build()
+    }
+
+    /** Picks the remembered track by its name once the tracks of the file are known. */
+    private fun applyRememberedNames(t: Tracks) {
+        val (audio, text) = pendingNames
+        if (audio == null && text == null) return
+        if (t.groups.isEmpty()) return
+        pendingNames = null to null
+        val b = player.trackSelectionParameters.buildUpon()
+        var changed = false
+        fun pick(type: Int, wanted: String) {
+            val lang = wanted.substringBefore('|')
+            val name = wanted.substringAfter('|', "")
+            var best: Pair<Tracks.Group, Int>? = null
+            for (g in t.groups) {
+                if (g.type != type) continue
+                for (i in 0 until g.length) {
+                    if (!g.isTrackSupported(i)) continue
+                    val f = g.getTrackFormat(i)
+                    val sameName = name.isNotEmpty() && f.label == name
+                    val sameLang = lang.isNotEmpty() && langOf(f).equals(lang, ignoreCase = true)
+                    if (sameName && (lang.isEmpty() || sameLang)) { best = g to i; break }
+                }
+                if (best != null) break
+            }
+            val found = best ?: return
+            if (found.first.isTrackSelected(found.second)) return
+            b.setOverrideForType(TrackSelectionOverride(found.first.mediaTrackGroup, found.second))
+            changed = true
+        }
+        audio?.let { pick(C.TRACK_TYPE_AUDIO, it) }
+        text?.let { pick(C.TRACK_TYPE_TEXT, it) }
+        if (changed) player.trackSelectionParameters = b.build()
     }
 
     private fun labelFor(f: Format, type: Int, n: Int): String {

@@ -333,6 +333,29 @@ fun HomeScreen() {
                     )
                 }
             }
+            // Mis canales: the channels with the heart, and a card to add more.
+            if (!loading || favoriteChannels.isNotEmpty()) {
+                item(key = "mine") {
+                    Shelf("Mis canales", live = favoriteChannels.isNotEmpty(), modifier = Modifier.animateItem()) {
+                        items(favoriteChannels, key = { "f:" + it.remoteId }) { c ->
+                            ChannelCard(
+                                c = c,
+                                width = 188.dp,
+                                onClick = { actions.playChannels(favoriteChannels, favoriteChannels.indexOf(c)) },
+                                onLongClick = { actions.toggleFavorite(Kind.LIVE, c.remoteId, c.name, c.logo) },
+                                modifier = Modifier.focusMemory("favch:${c.remoteId}", memory),
+                            )
+                        }
+                        item(key = "add") {
+                            AddChannelsCard(
+                                empty = favoriteChannels.isEmpty(),
+                                onClick = { actions.pickMyChannels() },
+                                modifier = Modifier.focusMemory("favch:add", memory),
+                            )
+                        }
+                    }
+                }
+            }
             if (loading && continueList.isEmpty()) {
                 item(key = "sk1") { SkeletonShelf() }
                 item(key = "sk2") { SkeletonShelf() }
@@ -434,20 +457,6 @@ fun HomeScreen() {
                 item(key = "mylist") {
                     Shelf("Mi lista", modifier = Modifier.animateItem()) {
                         items(myList, key = { it.uid }) { f -> FavoriteCard(f, memory) }
-                    }
-                }
-            }
-            if (favoriteChannels.isNotEmpty()) {
-                item(key = "favchannels") {
-                    Shelf("Canales favoritos", live = true, modifier = Modifier.animateItem()) {
-                        items(favoriteChannels, key = { "f:" + it.remoteId }) { c ->
-                            ChannelCard(
-                                c = c,
-                                onClick = { actions.playChannels(favoriteChannels, favoriteChannels.indexOf(c)) },
-                                onLongClick = { actions.toggleFavorite(Kind.LIVE, c.remoteId, c.name, c.logo) },
-                                modifier = Modifier.focusMemory("favch:${c.remoteId}", memory),
-                            )
-                        }
                     }
                 }
             }
@@ -782,6 +791,38 @@ fun ChannelCard(
         onClick = onClick,
         onLongClick = onLongClick,
         onFocused = onFocused,
+        modifier = modifier,
+    )
+}
+
+/** Card with a plus at the end of Mis canales: opens the guide to choose channels. */
+@Composable
+fun AddChannelsCard(empty: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, width: Dp = 188.dp) {
+    MediaCard(
+        title = if (empty) "Elige tus canales" else "Añadir canales",
+        image = null,
+        width = width,
+        aspectRatio = 16f / 9f,
+        art = {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Palette.Surface)
+                    .border(BorderStroke(1.5.dp, Palette.Surface3), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Palette.Surface3),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("+", style = Type.Title, color = Palette.Text)
+                }
+            }
+        },
+        onClick = onClick,
         modifier = modifier,
     )
 }

@@ -70,4 +70,23 @@ class Prefs(context: Context) {
     var autoRefreshHours: Int
         get() = sp.getInt("auto_refresh_hours", 24)
         set(v) = sp.edit().putInt("auto_refresh_hours", v).apply()
+
+    /** Audio of films and series when none was chosen for that title: "" the file's own, or a language ("es", "en"). */
+    var defaultAudioLang: String
+        get() = sp.getString(pk("default_audio"), "") ?: ""
+        set(v) = sp.edit().putString(pk("default_audio"), v).apply()
+
+    /** Subtitles when none were chosen for that title: "auto" as the file says, "off", or a language. */
+    var defaultTextLang: String
+        get() = sp.getString(pk("default_text"), "auto") ?: "auto"
+        set(v) = sp.edit().putString(pk("default_text"), v).apply()
+
+    /**
+     * Audio or subtitle track chosen for a film or a series ([key]), kept as
+     * "language|name" ("spa|Castellano", "|Pista 2"), or "off" for subtitles turned off.
+     */
+    fun trackChoice(key: String, type: Char): String? = sp.getString(pk("track_${type}_$key"), null)
+
+    fun saveTrackChoice(key: String, type: Char, value: String) =
+        sp.edit().putString(pk("track_${type}_$key"), value).apply()
 }

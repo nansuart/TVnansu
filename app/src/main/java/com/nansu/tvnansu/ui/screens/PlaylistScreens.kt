@@ -288,6 +288,8 @@ fun SettingsScreen() {
     var watermark by remember { mutableStateOf(repo.prefs.watermark) }
     var livePreview by remember { mutableStateOf(repo.prefs.livePreview) }
     var autoThumbs by remember { mutableStateOf(repo.prefs.autoThumbs) }
+    var defaultAudio by remember { mutableStateOf(repo.prefs.defaultAudioLang) }
+    var defaultText by remember { mutableStateOf(repo.prefs.defaultTextLang) }
 
     Column(
         Modifier
@@ -400,6 +402,37 @@ fun SettingsScreen() {
                 onSelect = {
                     subtitleBackground = it == 1
                     repo.prefs.subtitleBackground = subtitleBackground
+                },
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+        val audioCodes = listOf("", "es", "en")
+        SettingRow(
+            title = "Audio de películas y series",
+            description = "El idioma con el que empiezan si no elegiste otro en ese título. Lo que elijas durante la reproducción se recuerda para esa película o esa serie.",
+        ) {
+            Segmented(
+                options = listOf("Original", "Español", "Inglés"),
+                selected = audioCodes.indexOf(defaultAudio).coerceAtLeast(0),
+                onSelect = {
+                    defaultAudio = audioCodes[it]
+                    repo.prefs.defaultAudioLang = defaultAudio
+                },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        val textCodes = listOf("auto", "off", "es", "en")
+        SettingRow(
+            title = "Subtítulos de películas y series",
+            description = "Automático usa los que marque el archivo (por ejemplo, los forzados). Con audio en inglés y subtítulos en español tienes la versión original subtitulada.",
+        ) {
+            Segmented(
+                options = listOf("Automático", "No", "Español", "Inglés"),
+                selected = textCodes.indexOf(defaultText).coerceAtLeast(0),
+                onSelect = {
+                    defaultText = textCodes[it]
+                    repo.prefs.defaultTextLang = defaultText
                 },
             )
         }

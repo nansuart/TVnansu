@@ -209,7 +209,7 @@ fun LiveScreen() {
                     item(key = "guide") {
                         ThemeTile(
                             title = "Todos los canales",
-                            subtitle = "Guía completa",
+                            subtitle = "Guía de programación",
                             colors = listOf(Color(0xFF3A3A46), Color(0xFF1C1C24)),
                             onClick = { nav.push(Dest.LiveGuide(null)) },
                             modifier = Modifier.focusMemory("theme:all", memory),
@@ -239,9 +239,8 @@ fun LiveScreen() {
                     }
                 }
             }
-            if (favoriteChannels.isNotEmpty()) {
-                item(key = "fav") {
-                    Shelf("Canales favoritos", live = true, modifier = Modifier.animateItem()) {
+            item(key = "fav") {
+                    Shelf("Mis canales", live = favoriteChannels.isNotEmpty(), modifier = Modifier.animateItem()) {
                         items(favoriteChannels, key = { "f:" + it.remoteId }) { c ->
                             ChannelCard(
                                 c = c,
@@ -251,8 +250,15 @@ fun LiveScreen() {
                                 modifier = Modifier.focusMemory("lfav:${c.remoteId}", memory),
                             )
                         }
+                        item(key = "add") {
+                            AddChannelsCard(
+                                empty = favoriteChannels.isEmpty(),
+                                width = 176.dp,
+                                onClick = { actions.pickMyChannels() },
+                                modifier = Modifier.focusMemory("lfav:add", memory),
+                            )
+                        }
                     }
-                }
             }
             if (recentChannels.isNotEmpty()) {
                 item(key = "recent") {

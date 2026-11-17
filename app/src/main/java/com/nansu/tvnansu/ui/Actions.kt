@@ -70,8 +70,15 @@ class Actions(
     fun toggleFavorite(kind: Kind, remoteId: String, title: String, image: String?) {
         scope.launch {
             val added = repo.toggleFavorite(playlistId, kind, remoteId, title, image)
-            context.toast(if (added) "Añadido a Mi lista" else "Quitado de Mi lista")
+            val list = if (kind == Kind.LIVE) "Mis canales" else "Mi lista"
+            context.toast(if (added) "Añadido a $list" else "Quitado de $list")
         }
+    }
+
+    /** From the "+" of Mis canales: the guide with every channel, and how to add one. */
+    fun pickMyChannels() {
+        nav.push(Dest.LiveGuide(null))
+        context.toast("Mantén pulsado OK sobre un canal para añadirlo a Mis canales")
     }
 
     fun removeFromContinue(p: ProgressEntity) {

@@ -211,6 +211,9 @@ interface AppDao {
     @Query("SELECT * FROM programme WHERE playlistId = :pid AND channelEpgId = :epg AND stop > :now ORDER BY start LIMIT :limit")
     suspend fun upcoming(pid: Long, epg: String, now: Long, limit: Int): List<ProgrammeEntity>
 
+    @Query("SELECT * FROM programme WHERE playlistId = :pid AND channelEpgId = :epg AND stop > :from AND start < :to ORDER BY start")
+    suspend fun programmesBetween(pid: Long, epg: String, from: Long, to: Long): List<ProgrammeEntity>
+
     @Query("SELECT * FROM programme WHERE playlistId = :pid AND channelEpgId IN (:epgIds) AND start <= :now AND stop > :now")
     suspend fun nowPlaying(pid: Long, epgIds: List<String>, now: Long): List<ProgrammeEntity>
 
